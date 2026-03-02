@@ -86,37 +86,31 @@ health/
 
 ### 🐳 Via Docker Compose (Recommandé)
 
-Le projet tourne entièrement dans **Docker** avec **Traefik** comme reverse proxy. Aucune installation locale n'est nécessaire.
+Le projet tourne entièrement dans **Docker** avec **Traefik** comme reverse proxy. Aucune installation locale de dépendances n'est nécessaire.
 
-1. **Configurer les clés API** (voir section [Configuration des clés API](#-configuration-des-clés-api))
+1. **Cloner le projet** :
+   ```bash
+   git clone https://github.com/YannickMagayane/sante_spatio_temporel.git
+   cd sante_spatio_temporel
+   ```
 
-2. **Lancer l'application** :
+2. **Configurer les clés API** (voir section [Configuration des clés API](#-configuration-des-clés-api))
+
+3. **Lancer l'application** :
    ```bash
    ./bin/up
    ```
    > Ceci construit l'image Docker et lance les services (App + Traefik).
    > L'application est accessible sur `http://health.localhost`.
 
-3. **Voir les logs** :
+4. **Voir les logs** :
    ```bash
    ./bin/logs
    ```
 
-4. **Arrêter l'application** :
+5. **Arrêter l'application** :
    ```bash
    ./bin/down
-   ```
-
-### 🐍 Via Environnement Virtuel (Alternative locale)
-
-1. **Prérequis** : Python 3.9+, GDAL installé, compte Copernicus.
-2. **Cloner et installer** :
-   ```bash
-   git clone https://github.com/YannickMagayane/sante_spatio_temporel.git
-   cd sante_spatio_temporel
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
    ```
 
 ---
