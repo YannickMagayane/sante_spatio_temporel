@@ -1,0 +1,40 @@
+services:
+  traefik:
+    image: traefik:v3.1
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - web
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: ./compose/app/Dockerfile
+    volumes:
+      - .:/app
+      - ./compose/cle_api/.cdsapirc:/root/.cdsapirc:ro
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.health-app.rule=Host(`health.localhost`)"
+      - "traefik.http.routers.health-app.entrypoints=web"
+      - "traefik.http.services.health-app.loadbalancer.server.port=8000"
+    networks:
+      - web
+    depends_on:
+      - traefik
+    restart: unless-stopped
+
+networks:
+  web:
+    driver: bridge

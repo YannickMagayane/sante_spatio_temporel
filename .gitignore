@@ -1,0 +1,63 @@
+# ======================
+# Python
+# ======================
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+.venv/
+
+# ======================
+# Environment & Secrets
+# ======================
+.env
+.env.*
+*.env
+
+# API Keys (CRITICAL — NEVER commit)
+compose/cle_api/
+
+# ======================
+# Data (too large for git)
+# ======================
+data/climat/
+data/sanitaires/
+data/geospatial/
+data/processed/
+data/scraped/
+
+# ======================
+# Models (too large for git)
+# ======================
+models/*.h5
+models/*.pkl
+models/*.keras
+models/*.json
+
+# ======================
+# Reports & generated outputs
+# ======================
+reports/
+
+# ======================
+# IDE & Editor
+# ======================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ======================
+# Docker
+# ======================
+*.log
+
+# ======================
+# OS
+# ======================
+.DS_Store
+Thumbs.db

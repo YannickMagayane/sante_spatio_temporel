@@ -1,0 +1,6 @@
+#!/bin/bash
+# Launch all Docker containers (build + start)
+set -e
+docker compose up -d --build
+echo "✅ Application lancée sur http://health.localhost"
+echo "📊 Dashboard Traefik : http://localhost:8080"

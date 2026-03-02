@@ -1,0 +1,136 @@
+# Configuration de prétraitement pour l'analyse des données de santé
+# Utilisé par : scripts/preprocess.py et d'autres outils d'analyse
+
+# Provinces cibles avec coordonnées géographiques (lat, lon)
+# Ces données sont synchronisées avec scripts/geo_reference.py
+provinces:
+  Kinshasa:
+    lat: -4.3250
+    lon: 15.3222
+  Kongo-Central:
+    lat: -5.8167
+    lon: 13.4500
+  Kwango:
+    lat: -4.8100
+    lon: 17.0400
+  Kwilu:
+    lat: -5.0366
+    lon: 18.8162
+  Mai-Ndombe:
+    lat: -1.9470
+    lon: 18.2860
+  Équateur:
+    lat: 0.0478
+    lon: 18.2558
+  Mongala:
+    lat: 2.1500
+    lon: 21.5167
+  Nord-Ubangi:
+    lat: 4.2750
+    lon: 21.0000
+  Sud-Ubangi:
+    lat: 3.2600
+    lon: 19.7700
+  Tshuapa:
+    lat: -0.2819
+    lon: 20.8806
+  Tshopo:
+    lat: 0.5153
+    lon: 25.1950
+  Bas-Uélé:
+    lat: 2.7833
+    lon: 24.7333
+  Haut-Uélé:
+    lat: 2.7744
+    lon: 27.6164
+  Ituri:
+    lat: 1.5594
+    lon: 30.2522
+  Nord-Kivu:
+    lat: -1.6585
+    lon: 29.2200
+  Sud-Kivu:
+    lat: -2.5083
+    lon: 28.8608
+  Maniema:
+    lat: -2.9500
+    lon: 25.9500
+  Haut-Katanga:
+    lat: -11.6876
+    lon: 27.5026
+  Haut-Lomami:
+    lat: -8.7353
+    lon: 25.0000
+  Lualaba:
+    lat: -10.7167
+    lon: 25.4667
+  Tanganyika:
+    lat: -5.9333
+    lon: 29.1833
+  Kasaï:
+    lat: -6.4156
+    lon: 20.7961
+  Kasaï-Central:
+    lat: -5.8962
+    lon: 22.4166
+  Kasaï-Oriental:
+    lat: -6.1500
+    lon: 23.6000
+  Lomami:
+    lat: -6.1333
+    lon: 24.4833
+  Sankuru:
+    lat: -4.9667
+    lon: 23.4500
+
+# Ancienne section 'cities' maintenue pour compatibilité ascendante si nécessaire
+cities:
+  kinshasa:
+    lat: -4.3250
+    lon: 15.3222
+  lubumbashi:
+    lat: -11.6876
+    lon: 27.5026
+  kananga:
+    lat: -5.8962
+    lon: 22.4166
+  beni:
+    lat: 0.4950
+    lon: 29.4625
+  kipushi:
+    lat: -11.7614
+    lon: 27.2510
+
+# Maladies cibles
+diseases:
+  - paludisme
+  - cholera
+  - rougeole
+  - mpox
+  - ebola
+  - fievre jaune
+
+# Paramètres temporels
+temporal:
+  start_year: 2021
+  end_year: 2025
+  frequency: "monthly"
+  sequence_length: 12
+
+# Paramètres spatiaux
+spatial:
+  grid_resolution: 500
+  spatial_unit: "province"
+
+# Chemins de données
+paths:
+  climate_raw: "data/climat/"
+  sanitaires_raw: "data/sanitaires/"
+  geospatial: "data/geospatial/"
+  processed: "data/processed/"
+  scraped: "data/scraped/"
+
+# Gestion des valeurs manquantes
+missing_values:
+  strategy: "interpolate"
+  max_missing_ratio: 0.3

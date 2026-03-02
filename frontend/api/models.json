@@ -1,0 +1,17 @@
+[
+  {
+    "name": "LSTM",
+    "type": "lstm",
+    "status": "pending"
+  },
+  {
+    "name": "CNN",
+    "type": "cnn",
+    "status": "pending"
+  },
+  {
+    "name": "CONVLSTM",
+    "type": "convlstm",
+    "status": "pending"
+  }
+]
