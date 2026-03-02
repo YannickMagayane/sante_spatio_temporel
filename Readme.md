@@ -148,7 +148,7 @@ PYTHONUNBUFFERED=1
 Le script `scripts/download_climate.py` télécharge les données mensuelles via l'**API Copernicus**.
 
 ```bash
-python scripts/download_climate.py \
+docker compose exec app python scripts/download_climate.py \
    --start 2020 --end 2025 \
    --regions all \
    --output data/climat/
@@ -204,10 +204,10 @@ Le script `scripts/web_scraping.py` automatise la collecte de données en temps 
 **Utilisation** :
 ```bash
 # Scraper Twitter pour des alertes choléra à Kinshasa
-python scripts/web_scraping.py --platform twitter --keywords "choléra épidémie" --city Kinshasa
+docker compose exec app python scripts/web_scraping.py --platform twitter --keywords "choléra épidémie" --city Kinshasa
 
 # Scraper l'OMS pour les bulletins RDC
-python scripts/web_scraping.py --platform oms --keywords "RDC épidémie" --city "Nord-Kivu"
+docker compose exec app python scripts/web_scraping.py --platform oms --keywords "RDC épidémie" --city "Nord-Kivu"
 ```
 
 > Les données scrapées sont nettoyées, dédupliquées et fusionnées avec les sources officielles lors du prétraitement.
@@ -225,7 +225,7 @@ Le script `scripts/preprocess.py` réalise :
 5. **Intégration web scraping** : fusion des signaux Twitter/OMS avec les données structurées.
 
 ```bash
-python scripts/preprocess.py --config config/preprocess.yaml
+docker compose exec app python scripts/preprocess.py --config config/preprocess.yaml
 ```
 
 ---
@@ -283,7 +283,7 @@ Le script `scripts/evaluate.py` calcule :
 | **SHAP** | Variables les plus influentes (interprétabilité) |
 
 ```bash
-python scripts/evaluate.py --model lstm --test_data data/processed/test.csv
+docker compose exec app python scripts/evaluate.py --model lstm --test_data data/processed/test.csv
 ```
 
 ---
@@ -299,10 +299,10 @@ Le script `scripts/visualize.py` génère des **cartes interactives** :
 
 ```bash
 # Carte de risque pour janvier 2025
-python scripts/visualize.py --type maps --period 2025-01
+docker compose exec app python scripts/visualize.py --type maps --period 2025-01
 
 # Analyse SHAP pour le modèle LSTM
-python scripts/visualize.py --type shap --model lstm
+docker compose exec app python scripts/visualize.py --type shap --model lstm
 ```
 
 ### Tableau de bord (Alpine.js + Leaflet)
@@ -400,7 +400,7 @@ Le web scraping est le mécanisme de **veille sanitaire en temps réel** du proj
 
 **Commande :**
 ```bash
-python scripts/web_scraping.py --platform twitter --keywords "choléra épidémie" --city Kinshasa
+docker compose exec app python scripts/web_scraping.py --platform twitter --keywords "choléra épidémie" --city Kinshasa
 ```
 
 **Ce qu'on récupère :**
@@ -417,7 +417,7 @@ python scripts/web_scraping.py --platform twitter --keywords "choléra épidémi
 
 **Commande :**
 ```bash
-python scripts/web_scraping.py --platform oms --keywords "RDC épidémie" --city Beni
+docker compose exec app python scripts/web_scraping.py --platform oms --keywords "RDC épidémie" --city Beni
 ```
 
 **Ce qu'on récupère :**
@@ -431,7 +431,7 @@ python scripts/web_scraping.py --platform oms --keywords "RDC épidémie" --city
 
 **Commande :**
 ```bash
-python scripts/web_scraping.py --platform reliefweb --keywords "ebola" --city Beni
+docker compose exec app python scripts/web_scraping.py --platform reliefweb --keywords "ebola" --city Beni
 ```
 
 **Ce qu'on récupère :**
@@ -440,7 +440,7 @@ python scripts/web_scraping.py --platform reliefweb --keywords "ebola" --city Be
 ### 4. Scraper toutes les plateformes en une fois
 
 ```bash
-python scripts/web_scraping.py --platform all --keywords "paludisme épidémie" --city Kinshasa
+docker compose exec app python scripts/web_scraping.py --platform all --keywords "paludisme épidémie" --city Kinshasa
 ```
 
 ### 5. Résultat
