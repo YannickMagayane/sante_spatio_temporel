@@ -7,10 +7,21 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
     ports:
-      - "80:80"
-      - "8080:8080"
+      - "8000:80"
+      - "8081:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - web
+    restart: unless-stopped
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     networks:
       - web
     restart: unless-stopped
@@ -24,17 +35,24 @@ services:
       - ./compose/cle_api/.cdsapirc:/root/.cdsapirc:ro
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.health-app.rule=Host(`health.localhost`)"
+      - "traefik.http.routers.health-app.rule=PathPrefix(`/`)"
       - "traefik.http.routers.health-app.entrypoints=web"
       - "traefik.http.services.health-app.loadbalancer.server.port=8000"
+      - "traefik.docker.network=health_web"
     networks:
       - web
     depends_on:
       - traefik
+      - db
     restart: unless-stopped
 
 networks:
   web:
     driver: bridge
+
+volumes:
+  postgres_data:

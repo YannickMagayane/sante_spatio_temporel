@@ -10,11 +10,10 @@ from bs4 import BeautifulSoup
 
 # Import custom geocoding
 try:
-    from scripts.geo_reference import geocode_location, geocode_or_default, PROVINCES
+    from scripts.geo_reference import geocode_location, geocode_or_default
 except ImportError:
-    # Handle if run from different CWD
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from scripts.geo_reference import geocode_location, geocode_or_default, PROVINCES
+    from scripts.geo_reference import geocode_location, geocode_or_default
 
 # Default search keywords
 KEYWORDS_DISEASES = ["paludisme", "choléra", "rougeole", "mpox", "ebola", "fievre jaune"]
@@ -65,7 +64,8 @@ def scrape_twitter(keywords, city, max_results=50):
                 }
                 results.append(enrich_with_geo(res, city))
     except Exception as exc:
-        print(f"❌ Twitter error: {exc}", file=sys.stderr)
+        # Avoid crashing if Nitter instances are down or empty
+        print(f"⚠️  Twitter/Nitter error (skipping): {exc}")
     return results
 
 def scrape_who(keywords, city):

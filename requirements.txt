@@ -1,3 +1,10 @@
+# Backend & Framework
+Django>=5.1
+django-cotton>=1.1.0
+django-htmx>=1.17.0
+django-environ>=0.11.0
+psycopg2-binary>=2.9.9
+
 # Data manipulation
 pandas>=2.2.0
 numpy>=1.26.0
@@ -38,3 +45,4 @@ pyyaml>=6.0
 python-dotenv>=1.0.0
 tqdm>=4.66.0
 scikit-learn>=1.4.0
+hdx-python-api>=6.0.0

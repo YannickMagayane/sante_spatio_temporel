@@ -21,26 +21,25 @@ venv/
 compose/cle_api/
 
 # ======================
-# Data (too large for git)
+# Data & Models (too large for git)
 # ======================
-data/climat/
-data/sanitaires/
-data/geospatial/
-data/processed/
-data/scraped/
-
-# ======================
-# Models (too large for git)
-# ======================
-models/*.h5
-models/*.pkl
-models/*.keras
-models/*.json
-
-# ======================
-# Reports & generated outputs
-# ======================
+data/
+data/hdx_cvc
+data/raw_hdx
+data/extracted_hdx
+data/processed
+data/scraped
+data/climat
+data/sanitaires
+data/geospatial
+models/
 reports/
+*.sqlite
+*.sqlite.zip
+*.geojson
+*.shp
+*.db
+
 
 # ======================
 # IDE & Editor
@@ -61,3 +60,8 @@ reports/
 # ======================
 .DS_Store
 Thumbs.db
+
+# Agent & Brainstorming
+_bmad/
+.agent/
+_bmad-output/

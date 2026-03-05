@@ -1,0 +1,7 @@
+#!/bin/bash
+# Lancement de la synchronisation et du peuplement des données
+set -e
+echo "🔄 Synchronisation HDX et peuplement des Zones de Santé..."
+docker-compose exec app python scripts/auto_sync.py
+docker-compose exec app python scripts/seed_zones.py
+echo "✅ Opération terminée."

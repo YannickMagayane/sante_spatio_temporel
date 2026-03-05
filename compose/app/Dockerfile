@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgeos-dev \
     libproj-dev \
     curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Set GDAL environment variables
@@ -31,4 +32,4 @@ RUN mkdir -p data/climat data/sanitaires data/geospatial data/processed \
 
 EXPOSE 8000
 
-CMD ["python", "scripts/download_climate.py", "--help"]
+CMD ["./compose/app/entrypoint.sh"]

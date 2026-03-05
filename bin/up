@@ -1,6 +1,33 @@
 #!/bin/bash
-# Launch all Docker containers (build + start)
+# Lancement complet de l'infrastructure Pilier HealthDRC
 set -e
-docker compose up -d --build
-echo "✅ Application lancée sur http://health.localhost"
-echo "📊 Dashboard Traefik : http://localhost:8080"
+
+# Définition des couleurs
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Détection de la commande docker compose
+if docker-compose version > /dev/null 2>&1; then
+    DOCKER_CMD="docker-compose"
+else
+    DOCKER_CMD="docker-compose"
+fi
+
+# Nettoyage profond pour éviter l'erreur ContainerConfig (Bug Docker Compose v1)
+echo -e "${BLUE}🧹 Nettoyage profond des anciens états...${NC}"
+$DOCKER_CMD down --volumes --remove-orphans || true
+$DOCKER_CMD rm -v -f app || true
+
+# Construction et lancement
+echo -e "${BLUE}🏗️  Reconstruction et lancement du Pilier...${NC}"
+# On évite --force-recreate car c'est lui qui déclenche souvent le bug ContainerConfig sur v1
+$DOCKER_CMD up -d --build
+
+echo -e "\n${GREEN}✅ Système opérationnel !${NC}"
+echo -e "🌐 Dashboard Santé : ${BLUE}http://health.localhost:8000${NC}"
+echo -e "� API Endpoints   : ${BLUE}http://health.localhost:8000/api/stats.json${NC}"
+echo -e "🛠️  Traefik Admin  : ${BLUE}http://localhost:8080${NC}"
+
+echo -e "\n${BLUE}ℹ️  Logs système :${NC}"
+echo "docker compose logs -f app"

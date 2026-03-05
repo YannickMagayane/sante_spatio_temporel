@@ -1,0 +1,625 @@
+{% extends "base.html" %}
+
+{% block title %}RDC Health Intelligence | Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .massive-map {
+        height: 75vh;
+        border-radius: 40px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.7);
+    }
+
+    iframe {
+        width: 100% !important;
+        height: 100% !important;
+        border: none;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div x-data="healthDashboard()" x-init="init()"
+    class="px-6 py-4 space-y-6 max-w-[1920px] mx-auto min-h-screen text-slate-200">
+
+    <!-- Header & global Filters -->
+    <div
+        class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 glass p-6 rounded-[2.5rem] border-white/5 shadow-2xl">
+        <div class="flex items-center gap-4">
+            <div class="p-3 bg-brand-500/20 rounded-2xl">
+                <span class="text-3xl animate-pulse">📡</span>
+            </div>
+            <div>
+                <h1 class="text-2xl font-black text-white tracking-tight">RDC <span
+                        class="text-brand-400 font-bold italic">Epidemia Intel</span></h1>
+                <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                    <p class="text-[9px] text-slate-500 uppercase font-black tracking-widest">NeuralCore v4.0 -
+                        Prévisions {{ prediction_year }}</p>
+                </div>
+            </div>
+        </div>
+
+        <form method="GET" action="." class="flex flex-wrap items-center gap-4">
+            <div class="flex flex-col gap-1">
+                <span class="text-[9px] uppercase font-bold text-slate-500 ml-1 italic">Vecteur Viral</span>
+                <select name="disease" id="disease-filter" onchange="this.form.submit()"
+                    class="bg-black border-2 border-white/20 rounded-2xl px-4 py-2 text-sm text-white focus:ring-brand-500 outline-none backdrop-blur-md appearance-none">
+                    <option value="all" class="bg-black text-white" {% if selected_disease == 'all' %}selected 
+                    {% endif %}>
+                        Menace Globale (Mélange)
+                    </option>
+                    {% for d in stats %}
+                    <option value="{{ d.disease_name }}" {% if selected_disease == d.disease_name %}selected{% endif %}>
+                        {{ d.disease_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="flex flex-col gap-1">
+                <span class="text-[9px] uppercase font-bold text-slate-500 ml-1 italic">Segment Géo</span>
+                <select name="province" id="province-filter" onchange="this.form.submit()"
+                    class="bg-black border-2 border-white/20 rounded-2xl px-4 py-2 text-sm text-white focus:ring-brand-500 outline-none backdrop-blur-md appearance-none">
+                    <option value="all" class="bg-black text-white" {% if selected_province == 'all' %}selected 
+                    {% endif %}>Total Territoire (RDC)</option>
+                    {% for p in provinces %}
+                    <option value="{{ p.name }}" {% if selected_province == p.name %}selected{% endif %}>{{ p.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="h-10 w-[1px] bg-white/10 mx-2 hidden md:block"></div>
+
+            <div class="flex gap-2">
+                <a href="{% url 'analytics:dashboard' %}"
+                    class="px-4 py-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 text-[10px] font-black uppercase rounded-xl border border-brand-500/20 transition-all">Dashboard</a>
+
+            </div>
+
+            <div class="h-10 w-[1px] bg-white/10 mx-2 hidden md:block"></div>
+
+            <div class="flex gap-4">
+                <div class="text-right"
+                    title="Moyenne globale de la fiabilité de toutes les prédictions (Tout le système)">
+                    <p class="text-[9px] uppercase font-bold text-slate-500 italic flex items-center justify-end gap-1">
+                        Fiabilité Noyau <span
+                            class="bg-white/10 rounded-full w-3 h-3 flex items-center justify-center text-[7px] cursor-help">?</span>
+                    </p>
+                    <p class="text-lg font-mono font-black text-emerald-400">{{ avg_reliability }}%</p>
+                </div>
+                <div class="text-right" title="Score R² moyen reflétant la précision historique de l'IA">
+                    <p class="text-[9px] uppercase font-bold text-slate-500 italic">Précision IA</p>
+                    <p class="text-lg font-mono font-black text-amber-400">{{ avg_prec_score }}%</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-[9px] uppercase font-bold text-slate-500 italic">Delta Tempo</p>
+                    <p class="text-lg font-mono font-black text-brand-400">{{ temp_precision }}</p>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Info Banner / Legend -->
+    <div
+        class="glass p-4 rounded-2xl border-white/5 bg-slate-900/50 flex flex-col md:flex-row gap-4 items-center justify-between text-[10px] text-slate-400">
+        <div class="flex items-center gap-4 flex-wrap">
+            <span class="text-brand-400 text-sm">ℹ️</span>
+            <span class="flex items-center gap-1">
+                <strong class="text-emerald-400">Fiabilité Noyau :</strong> Moyenne de certitude sur les données
+                actuelles.
+            </span>
+            <span class="flex items-center gap-1">
+                <strong class="text-amber-400">Précision IA :</strong> Score historique / théorique de l'IA globale.
+            </span>
+            <span class="flex items-center gap-1">
+                <strong class="text-white">Confiance ZDS :</strong> Doute de l'IA sur un village / lieu précis.
+            </span>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="px-2 py-1 bg-white/5 rounded-md flex items-center gap-1">Données Historiques : <strong
+                    class="text-white">{{ data_start_year|default:"-" }} à
+                    {{ data_end_year|default:"-" }}</strong></span>
+
+            <span
+                class="px-2 py-1 bg-brand-500/10 text-brand-400 rounded-md border border-brand-500/20 flex items-center gap-1">Prédiction
+                : <strong>{{ prediction_year }}</strong></span>
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Sidebar: Indices & Alerts -->
+        <div class="lg:col-span-3 space-y-6">
+
+            <!-- 1. Anomalies (Moved to Top) -->
+            <div class="glass p-6 rounded-[2.5rem] border-red-500/20 bg-gradient-to-b from-red-500/10 to-transparent">
+                <h3 class="text-[10px] font-black uppercase text-red-400 mb-6 tracking-widest flex items-center gap-2">
+                    <span class="animate-bounce">⚠️</span> Alertes Système
+                </h3>
+                <div class="space-y-4 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
+                    {% for anomaly in system_anomalies %}
+                    <div
+                        class="p-3 bg-red-500/10 rounded-2xl border border-red-500/20 transition-all hover:bg-red-500/20">
+                        <p class="text-[9px] text-red-100 leading-tight font-bold italic">{{ anomaly }}</p>
+                    </div>
+                    {% empty %}
+                    <div class="p-4 text-center border-2 border-dashed border-white/5 rounded-3xl">
+                        <p class="text-[9px] text-slate-500 italic">Flux nominal.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 2. Géo-Focus (Analysis target & Location) -->
+            <div
+                class="glass p-6 rounded-[2.5rem] border-brand-500/20 bg-gradient-to-br from-brand-500/5 to-transparent">
+                <div class="flex flex-col gap-4">
+                    <div class="flex flex-col">
+                        <span class="text-[8px] uppercase font-black text-slate-500 tracking-[0.2em] mb-1">Cible
+                        </span>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">{% if selected_disease == 'all' %}🌐{% else %}🦠{% endif %}</span>
+                            <span class="text-xs font-black text-white uppercase">{{ selected_disease }}</span>
+                        </div>
+                    </div>
+                    <div class="h-[1px] w-full bg-white/5"></div>
+                    <div class="flex flex-col">
+                        <span
+                            class="text-[8px] uppercase font-black text-slate-500 tracking-[0.2em] mb-1">Localisation</span>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">📍</span>
+                            <span class="text-xs font-black text-brand-400 uppercase">
+                                {% if selected_province == 'all' %}Territoire RDC{% else %}{{ selected_province }}
+                                {% endif %}</span>
+                        </div>
+                    </div>
+                    {% if data_range %}
+                    <div class="h-[1px] w-full bg-white/5"></div>
+                    <div class="flex flex-col">
+                        <span class="text-[8px] uppercase font-black text-slate-500 tracking-[0.2em] mb-1">Fenêtre
+                            Temporelle</span>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">📅</span>
+                            <span class="text-[10px] font-mono text-emerald-400 font-bold">
+                                {{ data_range.start }} – {{ data_range.end }}
+                            </span>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 2b. Liste Rapide : Provinces & Maladies -->
+            <div class="glass p-6 rounded-[2.5rem] border-white/5 space-y-4">
+                <div class="flex justify-between items-center px-1">
+                    <h4 class="text-[9px] font-black uppercase text-slate-400 tracking-widest">Répertoire Géo</h4>
+                    <span class="text-[8px] px-2 py-0.5 bg-brand-500/20 text-brand-400 rounded-full font-bold">
+                        {{ provinces|length }} Prov.</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto custom-scrollbar pr-2">
+                    {% for p in provinces %}
+                    <div onclick="window.location.href='?province={{ p.name }}&disease={{ selected_disease }}'"
+                        class="text-[9px] font-black text-slate-400 bg-white/5 p-2.5 rounded-xl border border-white/5 hover:border-brand-500 hover:text-white hover:bg-brand-500/10 transition-all cursor-pointer truncate flex items-center gap-2 group">
+                        <span class="w-1.5 h-1.5 rounded-full bg-slate-600 group-hover:bg-brand-400"></span>
+                        {{ p.name }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 3. Neural-Focus Card (Moved from Map) -->
+            <div class="glass p-8 rounded-[2.5rem] border-2 border-brand-500/40 bg-brand-500/10 backdrop-blur-3xl shadow-2xl transition-all duration-500"
+                x-show="selectedPred" x-transition:enter="transition ease-out duration-300"
+                x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+
+                <div class="flex justify-between items-start mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-xl border border-white/10"
+                            x-text="getDiseaseIcon(selectedPred?.disease)"></div>
+                        <div>
+                            <h4 class="text-white font-black text-base tracking-tighter"
+                                x-text="selectedPred?.zone_name"></h4>
+                            <p class="text-[8px] uppercase font-black text-brand-400 tracking-widest"
+                                x-text="selectedPred?.disease"></p>
+                        </div>
+                    </div>
+                    <button @click="selectedPred = null" class="text-slate-500 hover:text-white transition-colors">
+                        <span class="text-xs uppercase font-black">✕</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div class="bg-white/5 p-3 rounded-2xl border border-white/5"
+                        title="Confiance spécifique du modèle sur cette prédiction de Zone de Santé uniquement.">
+                        <p
+                            class="text-[7px] uppercase font-black text-slate-500 mb-1 flex items-center justify-between">
+                            Confiance <span
+                                class="bg-white/10 rounded-full w-3 h-3 flex items-center justify-center text-[7px] cursor-help">?</span>
+                        </p>
+                        <p class="text-sm font-black text-emerald-400 font-mono"
+                            x-text="selectedPred ? `${selectedPred.reliability}%` : '0%'"></p>
+                    </div>
+                    <div class="bg-white/5 p-3 rounded-2xl border border-white/5">
+                        <p class="text-[7px] uppercase font-black text-slate-500 mb-1">Précision (R²)</p>
+                        <p class="text-sm font-black text-amber-400 font-mono"
+                            x-text="selectedPred ? `${(selectedPred.r2 * 100).toFixed(1)}%` : '0%'"></p>
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-white/10 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[7px] uppercase font-black text-slate-500 italic">Noyau IA</span>
+                        <span class="text-[10px] text-brand-400 font-black uppercase italic"
+                            x-text="selectedPred?.model"></span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[7px] uppercase font-black text-slate-500 italic">Angle d'Attaque</span>
+                        <span class="text-[10px] text-brand-200 font-bold leading-tight mt-1"
+                            x-text="selectedPred?.attack_angle"></span>
+                    </div>
+                    <div class="flex gap-2 items-center">
+                        <div class="w-6 h-6 rounded-lg bg-brand-500/20 flex items-center justify-center text-[10px]">🧠
+                        </div>
+                        <div class="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-[10px]">
+                            🛰️</div>
+                        <template x-if="selectedPred?.data_sparse">
+                            <span
+                                class="text-[8px] px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-lg font-black uppercase">⚠️
+                                Faible Densité</span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Légende Prédictive (Moved from Map) -->
+            <div class="glass p-6 rounded-[2.5rem] border-white/5 bg-gradient-to-b from-white/5 to-transparent">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2.5 h-2.5 rounded-full bg-[#ef4444] shadow-[0_0_10px_#ef4444]"></div>
+                        <span class="text-[10px] font-black uppercase text-red-500 tracking-widest">Menace Haute</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-2.5 h-2.5 rounded-full bg-[#eab308] shadow-[0_0_10px_#eab308]"></div>
+                        <span class="text-[10px] font-black uppercase text-yellow-500 tracking-widest">Vigilance</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-2.5 h-2.5 rounded-full bg-[#3b82f6] shadow-[0_0_10px_#3b82f6]"></div>
+                        <span class="text-[10px] font-black uppercase text-blue-500 tracking-widest">Stabilité</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass p-6 rounded-[2.5rem] border-white/5 space-y-6">
+                <h3
+                    class="text-[11px] font-black uppercase text-slate-400 tracking-widest border-l-4 border-brand-500 pl-3">
+                    Charges Virales Prédites
+                </h3>
+
+                <div class="space-y-4 overflow-y-auto max-h-[450px] custom-scrollbar pr-2">
+                    <template x-for="stat in stats" :key="stat.disease_name">
+                        <div class="p-4 rounded-3xl bg-white/5 border border-white/5 hover:border-brand-500/50 hover:bg-brand-500/5 transition-all cursor-pointer group"
+                            @click="selectedDisease = stat.disease_name">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-white text-[11px] font-black uppercase tracking-tight"
+                                    x-text="stat.disease_name"></span>
+                                <span class="text-xs" x-text="getDiseaseIcon(stat.disease_name)"></span>
+                            </div>
+                            <div class="w-full bg-white/5 h-1 rounded-full overflow-hidden mb-2">
+                                <div class="bg-brand-500 h-full transition-all duration-1000"
+                                    :style="`width: ${Math.min(100, stat.cases/10000)}%`"></div>
+                            </div>
+                            <div class="flex justify-between text-[9px] font-black uppercase text-slate-500">
+                                <span class="group-hover:text-brand-400">Pression IA</span>
+                                <span class="text-white font-mono"
+                                    x-text="`${Math.round(stat.cases).toLocaleString()} cas`"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Stats Overview -->
+            <div class="glass p-6 rounded-[2.5rem] bg-gradient-to-br from-white/5 to-transparent border-white/5">
+                <h3 class="text-[11px] font-black uppercase text-slate-400 mb-5 tracking-widest">Statut du Territoire
+                </h3>
+                <div class="flex flex-col gap-4">
+                    <div class="bg-white/5 p-4 rounded-3xl border border-white/5 flex justify-between items-center">
+                        <div>
+                            <p class="text-[8px] uppercase font-bold text-slate-500">Zones Actives</p>
+                            <p class="text-xl font-black text-white italic font-mono">{{ zone_count }}</p>
+                        </div>
+                        <div
+                            class="w-10 h-10 rounded-2xl bg-brand-500/10 flex items-center justify-center text-brand-400 text-xs">
+                            ZS</div>
+                    </div>
+                    <div class="bg-white/5 p-4 rounded-3xl border border-white/5 flex justify-between items-center">
+                        <div>
+                            <p class="text-[8px] uppercase font-bold text-slate-500">Propagation</p>
+                            <p class="text-xl font-black text-brand-400 italic font-mono">+{{ avg_spread }}%</p>
+                        </div>
+                        <div
+                            class="w-10 h-10 rounded-2xl bg-brand-500/10 flex items-center justify-center text-brand-400 text-xs">
+                            Δ</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Section: Map & Intelligence -->
+        <div class="lg:col-span-9 space-y-6">
+
+            <!-- Free Map Container -->
+            <div class="massive-map relative group border-2 border-brand-500/10 rounded-[3rem] overflow-hidden">
+                {{ map_html|safe }}
+
+                <!-- Minimal Pulse Info (Sync) -->
+                <div class="absolute bottom-8 left-8 z-[1000]">
+                    <div class="glass px-4 py-2 rounded-xl text-[8px] font-black uppercase text-white border-white/10 flex items-center gap-2 backdrop-blur-2xl transition-opacity duration-500"
+                        :class="selectedPred ? 'opacity-0' : 'opacity-100'">
+                        <span class="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
+                        Neural-Sync Active
+                    </div>
+                </div>
+
+                <!-- Minimal Pulse Info (Sync) -->
+                <div class="absolute bottom-8 left-8 z-[1000]">
+                    <div class="glass px-4 py-2 rounded-xl text-[8px] font-black uppercase text-white border-white/10 flex items-center gap-2 backdrop-blur-2xl transition-opacity duration-500"
+                        :class="selectedPred ? 'opacity-0' : 'opacity-100'">
+                        <span class="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
+                        Neural-Sync Active
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Intelligence Hub -->
+            <div class="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                <!-- 2. Recommendations (Rectangular/Short Full Width) -->
+                <div
+                    class="lg:col-span-12 glass p-8 rounded-[2.5rem] border-brand-500/10 bg-gradient-to-br from-brand-600/5 to-transparent relative overflow-hidden">
+                    <div class="absolute -top-24 -right-24 w-64 h-64 bg-brand-500/5 rounded-full blur-3xl"></div>
+
+                    <div
+                        class="flex flex-col md:flex-row justify-between items-center gap-6 mb-8 border-b border-white/5 pb-6">
+                        <h3 class="text-lg font-black text-white tracking-tighter flex items-center gap-4">
+                            <span
+                                class="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center border border-white/10 shadow-xl text-lg">💡</span>
+                            Hub de Recommandations Stratégiques
+                        </h3>
+                        <div class="flex items-center gap-4">
+                            <div class="px-4 py-2 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+                                <p class="text-[8px] uppercase font-black text-slate-500">Focus Pathogène</p>
+                                <p class="text-[10px] text-brand-400 font-black uppercase tracking-widest">
+                                    {% if target_disease %}{{ target_disease }}{% else %}Tous{% endif %}</p>
+                            </div>
+                            <div class="px-4 py-2 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+                                <p class="text-[8px] uppercase font-black text-slate-500">Mise à jour</p>
+                                <p class="text-[10px] text-white font-mono font-bold tracking-tight">{% now "H:i" %}
+                                    Sync</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
+                        class="grid grid-cols-1 md:grid-cols-2 gap-8 overflow-y-auto max-h-[300px] custom-scrollbar pr-4">
+                        <div class="space-y-3">
+                            <p
+                                class="text-[9px] uppercase font-black text-slate-500 mb-2 tracking-widest flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full bg-brand-400"></span> Signaux Faibles (CNN)
+                            </p>
+                            {% for insight in cnn_insights %}
+                            <div
+                                class="p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-brand-500/40 transition-all duration-300">
+                                <p class="text-[11px] text-slate-300 leading-relaxed font-medium">{{ insight }}</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="space-y-3 font-mono">
+                            <p
+                                class="text-[9px] uppercase font-black text-slate-500 mb-2 tracking-widest flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Directives NeuralCore
+                            </p>
+                            {% for rec in recommendations %}
+                            <div
+                                class="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 flex gap-3 items-start group hover:bg-emerald-500/10 transition-all">
+                                <div
+                                    class="w-5 h-5 rounded-lg bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
+                                    <span class="text-emerald-400 text-[9px] font-bold">!</span>
+                                </div>
+                                <p
+                                    class="text-[10px] text-emerald-200 leading-relaxed font-bold tracking-tight uppercase italic">
+                                    {{ rec }}</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <!-- 5. Section Graphiques (3 sur une ligne) -->
+                <div class="lg:col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6 pb-12">
+                    <!-- Graph 1: Pression Virale -->
+                    <div class="glass p-6 rounded-[2.5rem] border-white/5 transition-all hover:border-brand-500/20">
+                        <h4
+                            class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-brand-500"></span>
+                            {{ chart1_title|default:"Pression Virale" }}
+                        </h4>
+                        <div class="h-[200px]">
+                            <canvas id="diseaseChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Graph 2: Tendance Temporelle -->
+                    <div class="glass p-6 rounded-[2.5rem] border-white/5 transition-all hover:border-emerald-500/20">
+                        <h4
+                            class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Chronologie des Cas
+                        </h4>
+                        <div class="h-[200px]">
+                            <canvas id="tempChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Graph 3: Performance Modèles -->
+                    <div class="glass p-6 rounded-[2.5rem] border-white/5 transition-all hover:border-amber-500/20">
+                        <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex justify-between items-center"
+                            title="Précision théorique individuelle de chaque sous-modèle utilisé (ConvLSTM, CNN, etc.)">
+                            <span class="flex items-center gap-2"><span
+                                    class="w-2 h-2 rounded-full bg-amber-500"></span> Précision des Noyaux IA</span>
+                            <span
+                                class="bg-white/10 rounded-full w-4 h-4 flex items-center justify-center text-[9px] cursor-help text-white">?</span>
+                        </h4>
+                        <div class="h-[200px]">
+                            <canvas id="modelChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endblock %}
+
+    {% block extra_js %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const ctxOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        titleFont: { size: 10, weight: 'bold' },
+                        bodyFont: { size: 10 },
+                        padding: 10,
+                        borderRadius: 8
+                    }
+                },
+                scales: {
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 8 } } },
+                    x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 8 } } }
+                }
+            };
+
+            const chart1Type = '{{ chart1_type|default:"bar" }}';
+            const chart1Opts = chart1Type === 'bar' ? ctxOptions : {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: 'right', labels: { color: '#94a3b8', font: { size: 9 }, padding: 10 } },
+                    tooltip: ctxOptions.plugins.tooltip
+                }
+            };
+
+            new Chart(document.getElementById('diseaseChart'), {
+                type: chart1Type,
+                data: {
+                    labels: {{ chart_disease_labels| safe }},
+            datasets: [{
+                data: {{ chart_disease_values| safe }},
+            backgroundColor: [
+                'rgba(14, 165, 233, 0.9)', 'rgba(56, 189, 248, 0.7)', 'rgba(125, 211, 252, 0.5)',
+                'rgba(244, 63, 94, 0.9)', 'rgba(251, 113, 133, 0.7)', 'rgba(253, 164, 175, 0.5)',
+                'rgba(16, 185, 129, 0.9)', 'rgba(52, 211, 153, 0.7)', 'rgba(110, 231, 183, 0.5)',
+                'rgba(245, 158, 11, 0.9)'
+            ],
+            borderWidth: 1,
+            borderColor: 'rgba(15, 23, 42, 1)',
+            borderRadius: chart1Type === 'bar' ? 4 : 0
+                    }]
+                },
+            options: chart1Opts
+            });
+
+        // 2. Temporal Line Chart
+        new Chart(document.getElementById('tempChart'), {
+            type: 'line',
+            data: {
+                labels: {{ chart_temp_labels| safe }},
+            datasets: [{
+                data: {{ chart_temp_values| safe }},
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 2
+                }]
+            },
+            options: ctxOptions
+        });
+
+        new Chart(document.getElementById('modelChart'), {
+            type: 'polarArea',
+            data: {
+                labels: {{ chart_model_labels| safe }},
+            datasets: [{
+                data: {{ chart_model_values| safe }},
+            backgroundColor: [
+                'rgba(245, 158, 11, 0.5)',
+                'rgba(14, 165, 233, 0.5)',
+                'rgba(16, 185, 129, 0.5)',
+                'rgba(244, 63, 94, 0.5)'
+            ],
+            borderWidth: 0
+                }]
+            },
+            options: {
+            ...ctxOptions,
+            scales: { r: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false } } }
+        }
+        });
+    });
+
+        function healthDashboard() {
+            return {
+                selectedDisease: 'all',
+                selectedPred: null,
+                stats: [],
+                predictions: [],
+
+                async init() {
+                    try {
+                        await this.fetchData();
+                        if (this.predictions && this.predictions.length > 0) {
+                            this.selectedPred = this.predictions[0];
+                        }
+                    } catch (e) {
+                        console.error("Dashboard Init Error:", e);
+                    }
+                },
+
+                async fetchData() {
+                    try {
+                        const [sRes, pRes] = await Promise.all([
+                            fetch('/api/stats.json'),
+                            fetch('/api/predictions.json')
+                        ]);
+                        if (sRes.ok) this.stats = await sRes.json();
+                        if (pRes.ok) this.predictions = await pRes.json();
+                    } catch (e) {
+                        console.error("Fetch Data Error:", e);
+                    }
+                },
+
+                getDiseaseIcon(name) {
+                    const i = { 'Paludisme': '🦟', 'Choléra': '💧', 'Rougeole': '🔴', 'Mpox': '🐒', 'Ebola': '⚠️', 'Fièvre Jaune': '🌡️', 'COVID-19': '😷', 'Tuberculose': '🫁' };
+                    return i[name] || '🦠';
+                }
+            }
+        }
+    </script>
+    {% endblock %}

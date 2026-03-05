@@ -4,13 +4,13 @@ import sys
 
 import cdsapi
 
-# Importation de la base de données géo centrale
-try:
-    from geo_reference import PROVINCES
-except ImportError:
-    # Fallback si lancé depuis un autre dossier
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from geo_reference import PROVINCES
+PROVINCES = {
+    "Kinshasa": {"lat": -4.3250, "lon": 15.3222},
+    "Nord-Kivu": {"lat": -1.6585, "lon": 29.2200},
+    "Sud-Kivu": {"lat": -2.5000, "lon": 28.8667},
+    "Equateur": {"lat": 0.0487, "lon": 18.2612},
+    "Haut-Katanga": {"lat": -11.6609, "lon": 27.4794},
+}
 
 VARIABLES = [
     "2m_temperature",

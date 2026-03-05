@@ -1,3 +1,3 @@
 #!/bin/bash
 # Follow logs from all containers in real time
-docker compose logs -f --tail=100
+docker-compose logs -f --tail=100
