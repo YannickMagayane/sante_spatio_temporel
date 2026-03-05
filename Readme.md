@@ -1,70 +1,83 @@
 # 🏥 HealthDRC Intelligence v3.0 (NeuralCore Adaptive)
-**Analyse Spatio-Temporelle, Deep Learning & Surveillance Épidémiologique en RDC**
+
+[English Version](#english-version) | [Version Française](#version-française)
 
 ---
 
-## 🏗️ État Actuel : Intelligence Adaptative & Robustesse
+<a name="english-version"></a>
+# 🌍 English Version
 
-### ✅ Architecture NeuralCore (Nouveautés v3.0)
-- **Modèles Triple-Tier (Intelligence Adaptative)** : Le pipeline d'entraînement ne "skip" plus aucune zone. Il adapte sa complexité selon la densité des données HDX :
-    - **🤖 [BI-LSTM]** : Deep Learning bidirectionnel pour séries temporelles riches ($N \ge 8$).
-    - **📈 [LINEAR TREND]** : Régression statistique Scikit-Learn pour séries courtes ($4 \le N < 8$).
-    - **📉 [PERSISTENCE]** : Modèle de repli par persistance pour zones à très faible historique.
-- **Moteur d'Intelligence v3** : Analyse sémantique des prédictions. L'IA explique désormais *pourquoi* elle a choisi un modèle et quel est le degré de confiance ($R^2$, MAE, RMSE).
-- **Dashboard Premium v3** :
-    - **Score de Précision IA ($R^2$)** : Affichage transparent de la fiabilité historique.
-    - **Alertes de Densité** : Badge automatique `⚠️ Faible Densité` pour les prédictions basées sur peu de points.
-    - **Propagation & Gain** : Calcul dynamique du taux de croissance épidémique.
+## 📖 Project Overview
+**HealthDRC Intelligence** is a state-of-the-art spatio-temporal prediction platform designed for epidemiological surveillance in the Democratic Republic of Congo (DRC). It leverages Deep Learning (Bi-LSTM) and Climate data to forecast disease outbreaks (Malaria, Measles, Tuberculosis, etc.) at the Health Zone level.
 
-### ⚠️ Précautions Techniques
-- **Git & Big Data** : Les dossiers `data/` et `models/` sont strictement exclus du repo via `.gitignore` (exigences GitHub < 100Mo).
-- **Données HDX** : Les séries temporelles annuelles sont automatiquement gérées par le fallback linéaire.
+### 🧠 The "NeuralCore" Engine
+The system uses an **Adaptive Multi-Tier Pipeline** to ensure 100% geographical coverage, even in regions with sparse historical data:
+1.  **Deep Learning (Bi-LSTM)**: Used for long, rich time series ($N \ge 8$). Captures complex seasonality and non-linear trends.
+2.  **Statistical Linear Trend**: Used for annual or shorter series ($4 \le N < 8$).
+3.  **Persistence Fallback**: Guarantees a baseline forecast for zones with extremely rare data ($N < 4$).
+
+### 🚀 Key Features
+-   **NeuralCore Adaptive Training**: Automated training cycles that select the best model per province.
+-   **Intelligence Hub**: A contextual recommendation engine that explains AI decisions in plain language.
+-   **Premium Dashboard**: Real-time visualization using Heatmaps, Geo-localized markers, and predictive metrics ($R^2$, MAE, RMSE).
+-   **Sparse Data Shield**: High-precision indicators and transparency banners (`⚠️ Sparse Data`) for ethically sound scientific reporting.
 
 ---
 
-## 📂 Architecture du Projet
+## 🏗️ Technical Stack
+-   **Backend**: Python 3.14+, Django LTS ORM.
+-   **AI/ML**: TensorFlow 2.16+ (Bidirectional LSTM), Scikit-Learn.
+-   **Frontend**: HTMX, Alpine.js, TailwindCSS (CDN), Folium (Maps).
+-   **Orchestration**: Docker, Traefik (Reverse Proxy), PostgreSQL.
 
+---
+
+## 📂 Project Structure
 ```text
 health/
-├── bin/                              # Scripts de contrôle (up, down, logs, sync)
-├── analytics/                        # Moteur Django, Models & Intelligence (IA)
-├── scripts/                          # Pipelines (Train adaptatif, Ingest HDX, Diag)
-├── templates/                        # Interface Dashboard ultra-moderne (Tailwind/Alpine)
-├── data/                             # [IGNORÉ GIT] Données brutes et extraites (HDX, Geospatial)
-└── models/                           # [IGNORÉ GIT] Modèles .keras entraînés
+├── bin/          # Quick-launch bash scripts (up, down, logs, sync)
+├── analytics/    # Django Core: AI logic, Views, Intelligence Engine
+├── scripts/      # Data Pipelines: HDX Ingestion, NeuralCore Training, Diagnostics
+├── templates/    # Responsive Premium Dashboard (UI/UX)
+├── data/         # [Git Ignored] Local storage for HDX, Climate & Shapefiles
+└── models/       # [Git Ignored] Trained .keras and .pkl models
 ```
 
 ---
 
-## 🚀 Guide de Lancement
+<a name="version-française"></a>
+# 🇫🇷 Version Française
 
-1. **Démarrer l'infrastructure** :
-   ```bash
-   ./bin/up
-   ```
-2. **Lancer l'entraînement intelligent (NeuralCore)** :
-   ```bash
-   docker-compose exec app python3 scripts/train_models.py
-   ```
-3. **Accéder au Dashboard** :
-   Ouvrez `http://localhost:8000` ou `http://health.localhost`.
+## 📖 Présentation du Projet
+**HealthDRC Intelligence** est une plateforme de pointe dédiée à l'analyse spatio-temporelle et à la surveillance épidémiologique en République Démocratique du Congo (RDC). Elle utilise le Deep Learning (Bi-LSTM) et les données climatiques pour prédire l'évolution des maladies (Paludisme, Rougeole, Tuberculose, etc.) à l'échelle des Zones de Santé.
 
----
+### 🧠 Le Moteur "NeuralCore"
+Le système repose sur un **Pipeline Adaptatif à 3 Paliers** pour garantir une couverture géographique à 100%, même dans les régions avec peu de données historiques :
+1.  **Deep Learning (Bi-LSTM)** : Pour les séries temporelles riches ($N \ge 8$). Capture les saisonnalités complexes.
+2.  **Tendance Linéaire Statistique** : Pour les séries courtes ou annuelles ($4 \le N < 8$).
+3.  **Repli par Persistance** : Assure une prévision de base pour les zones à données ultra-rares ($N < 4$).
 
-## 📊 Méthodologie IA : NeuralCore Adaptive
-
-- **Bi-LSTM (Réseaux Récurrents)** : Analyse les tendances passées et la saisonnalité cyclique (Sin/Cos) pour prédire les pics futurs.
-- **R² Score Optimization** : Chaque modèle est évalué sur un split temporel strict (pas de shuffle) pour garantir la validité scientifique.
-- **Adaptive Windowing** : La fenêtre temporelle glissante s'ajuste dynamiquement à la longueur de la série disponible par province.
+### 🚀 Fonctionnalités Clés
+-   **Entraînement Adaptatif NeuralCore** : Sélection automatique du meilleur modèle selon la densité de données par province.
+-   **Hub d'Intelligence** : Un moteur de recommandation contextuelle qui explique les décisions de l'IA en langage clair.
+-   **Dashboard Premium** : Visualisation en temps réel via Heatmaps, marqueurs géolocalisés et métriques prédictives ($R^2$, MAE, RMSE).
+-   **Transparence Scientifique** : Affichage systématique du score de précision et badge `⚠️ Faible Densité` pour une lecture éthique des résultats.
 
 ---
 
-## 🔄 Pipeline de Synchronisation
-L'orchestrateur assure la cohérence des données :
-- **Ingestion** : `scripts/ingest_hdx.py` - Injection intelligente des données WHO/HDX.
-- **Diagnostic** : `scripts/diag_data.py` - Vérification de la cohérence spatiale.
-- **IA** : `scripts/train_models.py` - Cycle complet d'entraînement et prédiction 2026.
+## �️ Stack Technique
+-   **Backend** : Python 3.14+, Django LTS ORM.
+-   **AI/ML** : TensorFlow 2.16+ (Bidirectional LSTM), Scikit-Learn.
+-   **Frontend** : HTMX, Alpine.js, TailwindCSS (CDN), Folium (Cartographie).
+-   **Infrastructure** : Docker, Traefik (Proxy inverse), PostgreSQL.
 
 ---
-*Moteur de prédiction spatio-temporelle optimisé pour la République Démocratique du Congo.*
-*Développé par Yannick Magayane.*
+
+## 🚀 Guide de Lancement / Setup
+1.  **Démarrer l'infrastructure** : `./bin/up`
+2.  **Lancer l'entraînement IA** : `docker-compose exec app python3 scripts/train_models.py`
+3.  **Accéder au site** : `http://localhost:8000` (ou `http://health.localhost`)
+
+---
+*Developed for health excellence in DR Congo by Yannick Magayane.*
+*Optimisé pour la précision scientifique et la résilience des données.*
