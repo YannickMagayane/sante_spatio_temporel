@@ -1,68 +1,70 @@
-# 🏥 HealthDRC Intelligence v2.0
-**Analyse Spatio-Temporelle & Surveillance Épidémiologique en RDC**
+# 🏥 HealthDRC Intelligence v3.0 (NeuralCore Adaptive)
+**Analyse Spatio-Temporelle, Deep Learning & Surveillance Épidémiologique en RDC**
 
 ---
 
-## 🏗️ État Actuel : Ce qui marche & ce qui ne marche pas
+## 🏗️ État Actuel : Intelligence Adaptative & Robustesse
 
-### ✅ Ce qui fonctionne (OK)
-- **Modèles Hybrides (ConvLSTM-Spatio)** : L'IA est maintenant robuste et corrélée temporellement et spatialement.
-- **Entraînement Automatisé** : Le "Data Train" est prêt et se lance automatiquement toutes les **24 heures**.
-- **Visualisation Intelligente** :
-    - **Global** : HeatMap (Carte de chaleur) fluide sur toute la RDC.
-    - **Local** : Zoom automatique et isolation des zones de santé lors du choix d'une province.
-- **Dynamisme des Données** : Les indicateurs (Age -15 ans, Ruralité, Reliabilité) sont calculés en temps réel depuis la base de données.
+### ✅ Architecture NeuralCore (Nouveautés v3.0)
+- **Modèles Triple-Tier (Intelligence Adaptative)** : Le pipeline d'entraînement ne "skip" plus aucune zone. Il adapte sa complexité selon la densité des données HDX :
+    - **🤖 [BI-LSTM]** : Deep Learning bidirectionnel pour séries temporelles riches ($N \ge 8$).
+    - **📈 [LINEAR TREND]** : Régression statistique Scikit-Learn pour séries courtes ($4 \le N < 8$).
+    - **📉 [PERSISTENCE]** : Modèle de repli par persistance pour zones à très faible historique.
+- **Moteur d'Intelligence v3** : Analyse sémantique des prédictions. L'IA explique désormais *pourquoi* elle a choisi un modèle et quel est le degré de confiance ($R^2$, MAE, RMSE).
+- **Dashboard Premium v3** :
+    - **Score de Précision IA ($R^2$)** : Affichage transparent de la fiabilité historique.
+    - **Alertes de Densité** : Badge automatique `⚠️ Faible Densité` pour les prédictions basées sur peu de points.
+    - **Propagation & Gain** : Calcul dynamique du taux de croissance épidémique.
 
-### ⚠️ Ce qui est en cours / Nécessite attention
-- **Accès Dashboard (Bad Gateway)** : Traefik rencontre parfois des difficultés à joindre le container applicatif lors des redémarrages massifs (corrigé via simplification des labels).
-- **Données Climatiques ERA5** : Nécessite l'acceptation manuelle des licences sur le site de Copernicus pour un téléchargement complet sans erreurs 403.
+### ⚠️ Précautions Techniques
+- **Git & Big Data** : Les dossiers `data/` et `models/` sont strictement exclus du repo via `.gitignore` (exigences GitHub < 100Mo).
+- **Données HDX** : Les séries temporelles annuelles sont automatiquement gérées par le fallback linéaire.
 
 ---
 
-## 📂 Architecture & Organisation
+## 📂 Architecture du Projet
 
 ```text
 health/
-├── bin/                              # Commandes de contrôle (up, down, logs, sync)
-├── analytics/                        # Moteur Django & Intelligence Artificielle
-├── scripts/                          # Pipelines de données (Train, Scraping, Sync)
-├── templates/                        # Interface Dashboard Premium
-├── data/                             # Stockage des données (HDX, Climat, Sanitaires)
-└── compose/                          # Configuration Docker (App, Traefik, DB)
+├── bin/                              # Scripts de contrôle (up, down, logs, sync)
+├── analytics/                        # Moteur Django, Models & Intelligence (IA)
+├── scripts/                          # Pipelines (Train adaptatif, Ingest HDX, Diag)
+├── templates/                        # Interface Dashboard ultra-moderne (Tailwind/Alpine)
+├── data/                             # [IGNORÉ GIT] Données brutes et extraites (HDX, Geospatial)
+└── models/                           # [IGNORÉ GIT] Modèles .keras entraînés
 ```
 
 ---
 
-## 🚀 Guide Rapide de Lancement
+## 🚀 Guide de Lancement
 
-1. **Lancer le Pilier** :
+1. **Démarrer l'infrastructure** :
    ```bash
    ./bin/up
    ```
-2. **Accéder au Dashboard** :
-   Ouvrez votre navigateur sur `http://health.localhost` ou `http://localhost:8000`.
-
-3. **Forcer une Synchronisation Rapide** :
+2. **Lancer l'entraînement intelligent (NeuralCore)** :
    ```bash
    docker-compose exec app python3 scripts/train_models.py
    ```
+3. **Accéder au Dashboard** :
+   Ouvrez `http://localhost:8000` ou `http://health.localhost`.
 
 ---
 
-## 📊 Les Modèles : LSTM vs CNN
+## 📊 Méthodologie IA : NeuralCore Adaptive
 
-- **LSTM (Temporel)** : Analyse les cycles passés pour prédire **QUAND** un pic épidémique arrivera.
-- **CNN (Spatial)** : Analyse la carte pour prédire **OÙ** la maladie va se déplacer.
-- **ConvLSTM (Hybride)** : Le "Cœur" du système, capturant les deux dimensions pour une précision maximale.
-
----
-
-## 🔄 Automatisation 24h
-L'orchestrateur (`scripts/orchestrator.py`) assure la fraîcheur des données :
-- **T+0h** : Synchronisation HDX.
-- **T+6h** : MAJ Climat.
-- **T+12h** : Entraînement IA.
-- **T+24h** : Répétition.
+- **Bi-LSTM (Réseaux Récurrents)** : Analyse les tendances passées et la saisonnalité cyclique (Sin/Cos) pour prédire les pics futurs.
+- **R² Score Optimization** : Chaque modèle est évalué sur un split temporel strict (pas de shuffle) pour garantir la validité scientifique.
+- **Adaptive Windowing** : La fenêtre temporelle glissante s'ajuste dynamiquement à la longueur de la série disponible par province.
 
 ---
-*Développé pour l'excellence sanitaire en RDC par Yannick Magayane.*
+
+## 🔄 Pipeline de Synchronisation
+L'orchestrateur assure la cohérence des données :
+- **Ingestion** : `scripts/ingest_hdx.py` - Injection intelligente des données WHO/HDX.
+- **Diagnostic** : `scripts/diag_data.py` - Vérification de la cohérence spatiale.
+- **IA** : `scripts/train_models.py` - Cycle complet d'entraînement et prédiction 2026.
+
+---
+*Moteur de prédiction spatio-temporelle optimisé pour la République Démocratique du Congo.*
+*Développé par Yannick Magayane.*
