@@ -25,8 +25,8 @@ HealthDRC vise à fournir une surveillance épidémiologique en temps réel en i
 ### 📦 Installation Rapide
 ```bash
 # Cloner le projet
-git clone <repository_url>
-cd health
+git clone https://github.com/YannickMagayane/sante_spatio_temporel
+cd sante_spatio_temporel
 
 # Lancer avec Docker
 docker-compose up -d --build
