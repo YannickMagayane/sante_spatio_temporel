@@ -75,7 +75,7 @@ def train_and_predict():
     today = date.today()
     target_date = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
         
-    Prediction.objects.all().delete()
+    Prediction.objects.filter(prediction_date=target_date).delete()
     prediction_list = []
     seen_predictions = set()
     performance_log = []
@@ -234,7 +234,7 @@ def train_and_predict():
                     ))
 
     if prediction_list:
-        Prediction.objects.bulk_create(prediction_list, batch_size=500)
+        Prediction.objects.bulk_create(prediction_list, batch_size=500, ignore_conflicts=True)
     logger.info(f"✅ Created {len(prediction_list)} predictions")
     
     # Generate Report
