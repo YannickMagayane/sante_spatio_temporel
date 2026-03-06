@@ -67,13 +67,18 @@ EXTRACTED_DIR = "data/extracted_hdx"
 # ---------------------------------------------------------------------------
 
 def extract_hdx_archives():
-    """Extract all ZIP files found in data/raw_hdx."""
-    logger.info("📦 Extraction des archives HDX...")
-    for path in Path(RAW_HDX_DIR).rglob("*.zip"):
+    """Extract ALL ZIP files found recursively in the data/ directory."""
+    logger.info("📦 Extraction exhaustive de toutes les archives ZIP...")
+    # Scan the whole data directory for ZIPs, not just raw_hdx
+    for path in Path("data").rglob("*.zip"):
+        # Extract next to the zip file or in extracted_hdx? 
+        # Better to keep them in extracted_hdx for centralized scanning
         extract_to = Path(EXTRACTED_DIR)
         os.makedirs(extract_to, exist_ok=True)
         try:
             with zipfile.ZipFile(path, 'r') as zip_ref:
+                # Filter out system files or large geodata if already processed? 
+                # No, user said "tout", so we extract everything.
                 zip_ref.extractall(extract_to)
             logger.info(f"  ✅ Extrait : {path.name}")
         except Exception as e:
@@ -100,6 +105,46 @@ DISEASES_MAP = {
     'vih': 'VIH/SIDA',
     'hepatitis': 'Hépatite',
     'hépatite': 'Hépatite',
+    'meningite': 'Méningite',
+    'meningitis': 'Méningite',
+    'pest': 'Peste',
+    'plague': 'Peste',
+    'typhoid': 'Typhoïde',
+    'typhoïde': 'Typhoïde',
+    'polio': 'Poliomyélite',
+    'tetanus': 'Tétanos',
+    'tétanos': 'Tétanos',
+    'diphtheria': 'Diphtérie',
+    'diphtérie': 'Diphtérie',
+    'pertussis': 'Coqueluche',
+    'coqueluche': 'Coqueluche',
+    'mumps': 'Oreillons',
+    'oreillons': 'Oreillons',
+    'rubella': 'Rubéole',
+    'rubéole': 'Rubéole',
+    'diarrhoeal': 'Diarrhée',
+    'diarrhée': 'Diarrhée',
+    'anaemia': 'Anémie',
+    'anémie': 'Anémie',
+    'stunting': 'Malnutrition',
+    'wasting': 'Malnutrition',
+    'trypanosomiasis': 'Trypanosomiase',
+    'trypanosomiase': 'Trypanosomiase',
+    'buruli': 'Ulcère de Buruli',
+    'leprosy': 'Lèpre',
+    'lèpre': 'Lèpre',
+    'rabies': 'Rage',
+    'onchocerciasis': 'Onchocercose',
+    'schistosomiasis': 'Bilharziose',
+    'pneumoccocal': 'Pneumonie',
+    'pneumonie': 'Pneumonie',
+    'rotavirus': 'Diarrhée',
+    'dementia': 'Démence',
+    'cardiovascular': 'Cardiovasculaire',
+    'diabetes': 'Diabète',
+    'cancer': 'Cancer',
+    'poisoning': 'Empoisonnement',
+    'suicide': 'Suicide',
 }
 
 # Major cities in DRC (used to differentiate Ville from 145 official Territoires)
@@ -718,17 +763,12 @@ def _find_zone(index, zone_name, province_name=None):
 # ---------------------------------------------------------------------------
 
 
-# Map CSV filenames to disease categories
+# Map CSV filenames to disease categories (Legacy/Reference)
 WHO_DISEASE_FILES = {
     'malaria_indicators_cod.csv': 'Paludisme',
     'tuberculosis_indicators_cod.csv': 'Tuberculose',
     'hiv_indicators_cod.csv': 'VIH/SIDA',
     'hepatitis_indicators_cod.csv': 'Hépatite',
-    'child_mortality_indicators_cod.csv': None,  # detected from indicator
-    'immunization_coverage_and_vaccine_preventable_diseases_indicators_cod.csv': None,
-    'neglected_tropical_diseases_indicators_cod.csv': None,
-    'nutrition_indicators_cod.csv': None,
-    'maternal_and_reproductive_health_indicators_cod.csv': None,
 }
 
 # Indicators that contain actual case counts (not rates/percentages)
@@ -739,6 +779,14 @@ CASE_COUNT_INDICATORS = {
     'WHS3_62',  # Measles reported cases
     'MORT_100',  # Child deaths by cause
     'CHOLERA_0000000001',
+    'EBOLA_0000000001',
+    'MPOX_0000000001',
+    'WHS3_41',  # Diphtheria
+    'WHS3_43',  # Pertussis
+    'WHS3_46',  # Total tetanus
+    'WHS3_49',  # Poliomyelitis
+    'WHS3_50',  # Yellow fever
+    'WHS3_57',  # Rubella
 }
 
 
@@ -988,22 +1036,30 @@ def inject_idp_data():
                 prov_col = None
 
                 for i, c in enumerate(cols_lower):
-                    if 'zone' in c and 'sant' in c:
+                    if ('zone' in c and 'sant' in c) or c in ['health_zone_label', 'zs', 'health_zone', 'zone_sante']:
                         zs_col = cols[i]
-                    elif 'province' in c:
+                    elif 'province' in c or c in ['admin1_label', 'admin1']:
                         prov_col = cols[i]
                     elif any(k in c for k in ['idp', 'deplac', 'déplac', 'pdis', 'stock']):
                         if not idp_col:
                             idp_col = cols[i]
-                    elif 'total' in c and not idp_col:
+                    elif ('total' in c or c == 'person') and not idp_col:
                         idp_col = cols[i]
 
-                if not zs_col and not idp_col:
+                if not zs_col or not idp_col:
                     continue
 
-                for _, row in df.iterrows():
-                    zone_name = str(row.get(zs_col, '')) if zs_col else ''
-                    prov_name = str(row.get(prov_col, '')) if prov_col else ''
+                # Clean numeric data and group to avoid overwriting rows
+                df[idp_col] = pd.to_numeric(df[idp_col], errors='coerce').fillna(0)
+                group_cols = [zs_col]
+                if prov_col:
+                    group_cols.append(prov_col)
+                
+                grouped = df.groupby(group_cols, as_index=False)[idp_col].sum()
+
+                for _, row in grouped.iterrows():
+                    zone_name = str(row[zs_col])
+                    prov_name = str(row[prov_col]) if prov_col else ''
 
                     if not zone_name or zone_name.lower() == 'nan':
                         continue
@@ -1012,14 +1068,9 @@ def inject_idp_data():
                     if not zone:
                         continue
 
-                    val = None
-                    if idp_col:
-                        try:
-                            val = int(pd.to_numeric(row[idp_col], errors='coerce'))
-                        except (ValueError, TypeError):
-                            continue
+                    val = int(row[idp_col])
 
-                    if val and val > 0:
+                    if val > 0:
                         # Store IDP data in zone metadata
                         geo = zone.geometry or {}
                         geo['idp'] = {
@@ -1041,110 +1092,138 @@ def inject_idp_data():
 # ---------------------------------------------------------------------------
 
 
-def inject_extra_csv_data():
+def inject_extra_clinical_data():
     """
-    Inject extra clinical data from all remaining WHO CSV files in raw_hdx.
-
-    Scans CSV files not already handled by ``inject_who_clinical_data``
-    and extracts identifiable disease case counts.
-
-    Example:
-        >>> inject_extra_csv_data()
+    Inject extra clinical data from ALL CSV and Excel files in RAW and EXTRACTED dirs.
+    This version is more aggressive and recursively scans for any clinical indicators.
     """
-    logger.info("📊 Scan des CSV supplémentaires (données OMS)...")
+    logger.info("📊 Scan récursif de toutes les données cliniques (CSV/Excel)...")
 
-    already_handled = set(WHO_DISEASE_FILES.keys())
-    skip_prefixes = ('cod_adm', 'democratic-republic', 'infrastructure', 'urban', 'rdc-ipc')
+    # Scan the WHOLE data directory except geospatial to avoid noise
+    scan_dirs = ["data"]
     
-    # Large files: we include them but only for case-related indicators
-    include_files = {
-        'health_indicators_cod.csv',
-        'world_health_statistics_indicators_cod.csv',
-        'noncommunicable_diseases_indicators_cod.csv',
-    }
-    
-    # Environmental/Policy files we still skip to save time
-    skip_files = {
-        'air_pollution_indicators_cod.csv',
-        'tobacco_control_indicators_cod.csv',
-        'global_information_system_on_alcohol_and_health_indicators_cod.csv',
-    }
-
-    zones = list(
-        HealthZone.objects.filter(population__gt=0)
-        .select_related('territory__province')
-    )
+    zones = list(HealthZone.objects.filter(population__gt=0).select_related('territory__province'))
     if not zones:
-        logger.warning("⚠️ Aucune zone avec population.")
         return
-
     total_pop = sum(z.population for z in zones)
-    total_entries = 0
-
-    # First pass: collect all (disease, year) -> national_cases to avoid
-    # distributing the same disease/year multiple times
+    
     aggregated = {}  # (disease, year) -> max national_cases
 
-    csv_files = sorted(Path(RAW_HDX_DIR).glob("*.csv"))
-    for filepath in csv_files:
-        if filepath.name in already_handled:
-            continue
-        if filepath.name in skip_files:
-            continue
-        if any(filepath.name.startswith(p) for p in skip_prefixes):
-            continue
-
-        logger.info(f"  📄 Scan: {filepath.name}")
-        try:
-            with open(filepath, 'r', encoding='utf-8-sig') as f:
-                reader = csv.DictReader(f)
-                if not reader.fieldnames:
-                    continue
-
-                has_gho = 'GHO (CODE)' in reader.fieldnames
-                if not has_gho:
-                    continue
-
-                for row in reader:
-                    gho_code = row.get('GHO (CODE)', '')
-                    gho_display = row.get('GHO (DISPLAY)', '')
-                    year_str = row.get('STARTYEAR', '')
-                    value_str = row.get('Numeric', '')
-
-                    disease = _detect_disease(gho_code, gho_display)
-                    if not disease:
-                        continue
-
+    for s_dir in scan_dirs:
+        if not os.path.exists(s_dir): continue
+        for root, dirs, files in os.walk(s_dir):
+            # Skip geospatial and large processed folders
+            if 'geospatial' in root or 'processed' in root: continue
+            
+            for filename in files:
+                
+                filepath = os.path.join(root, filename)
+                
+                # --- PROCESS CSV ---
+                if filename.lower().endswith('.csv'):
                     try:
-                        year = int(str(year_str)[:4])
-                    except (ValueError, TypeError):
-                        continue
+                        with open(filepath, 'r', encoding='utf-8-sig', errors='replace') as f:
+                            reader = csv.DictReader(f)
+                            if not reader.fieldnames: continue
+                            
+                            # Check if it has standard GHO columns
+                            has_gho = 'GHO (CODE)' in reader.fieldnames or 'Indicator' in reader.fieldnames
+                            
+                            for row in reader:
+                                gho_code = row.get('GHO (CODE)', row.get('Indicator', ''))
+                                gho_display = row.get('GHO (DISPLAY)', row.get('IndicatorName', ''))
+                                year_str = row.get('STARTYEAR', row.get('Year', row.get('YEAR (DISPLAY)', '')))
+                                value_str = row.get('Numeric', row.get('Value', ''))
 
-                    if year < 2010 or year > 2026:
-                        continue
+                                disease = _detect_disease(gho_code, gho_display)
+                                if not disease:
+                                    # Fallback: check filename if no disease detected in indicators
+                                    disease = _detect_disease(filename, filename)
+                                
+                                if not disease: continue
 
-                    value = parse_numeric(value_str)
-                    if not value or value <= 0:
-                        continue
+                                try:
+                                    year = int(str(year_str)[:4])
+                                except: continue
+                                
+                                if year < 2010 or year > 2026: continue
 
-                    display_lower = gho_display.lower()
-                    if 'number' in display_lower or 'cases' in display_lower:
-                        key = (disease, year)
-                        # Keep the maximum value for deduplication
-                        aggregated[key] = max(aggregated.get(key, 0), int(value))
+                                value = parse_numeric(value_str)
+                                if not value or value <= 0: continue
 
-        except Exception as e:
-            logger.debug(f"  Ignoré {filepath.name}: {e}")
+                                display_lower = gho_display.lower()
+                                # Heuristic for clinical counts vs rates
+                                if any(k in display_lower for k in ['number', 'cases', 'cas', 'incidence', 'total']) and 'rate' not in display_lower:
+                                    key = (disease, year)
+                                    aggregated[key] = max(aggregated.get(key, 0), int(value))
+                    except Exception as e:
+                        logger.debug(f"  Erreur scan CSV {filename}: {e}")
 
-    # Second pass: distribute aggregated data
-    logger.info(f"  📊 Distribution de {len(aggregated)} indicateurs agrégés...")
+                # --- PROCESS EXCEL ---
+                elif filename.lower().endswith(('.xlsx', '.xls')):
+                    try:
+                        import pandas as pd
+                        import gc
+                        
+                        # Read sheet by sheet to prevent Out-Of-Memory (OOM) 137 exit code
+                        xl = pd.ExcelFile(filepath, engine='openpyxl')
+                        for sheet_name in xl.sheet_names:
+                            try:
+                                # Limit to 5000 rows to prevent massive RAM spikes on huge unrelated files
+                                df = pd.read_excel(xl, sheet_name=sheet_name, nrows=5000)
+                            except Exception:
+                                continue
+                                
+                            if df.empty: 
+                                del df
+                                gc.collect()
+                                continue
+                            
+                            df.columns = [str(c).strip() for c in df.columns]
+                            cols = [c.lower() for c in df.columns]
+                            
+                            # Identify year and value columns
+                            year_col = next((c for i, c in enumerate(df.columns) if 'year' in cols[i] or 'annee' in cols[i] or 'année' in cols[i]), None)
+                            val_col = next((c for i, c in enumerate(df.columns) if any(k in cols[i] for k in ['value', 'cas', 'nombre', 'count', 'numeric', 'total'])), None)
+                            ind_col = next((c for i, c in enumerate(df.columns) if 'indicat' in cols[i] or 'disease' in cols[i] or 'maladie' in cols[i]), None)
+
+                            if not val_col: continue
+
+                            # Try to detect disease from filename or header
+                            base_disease = _detect_disease(filename + " " + sheet_name, filename + " " + sheet_name)
+
+                            for _, row in df.iterrows():
+                                disease = base_disease
+                                if ind_col:
+                                    d_tmp = _detect_disease(str(row[ind_col]), str(row[ind_col]))
+                                    if d_tmp: disease = d_tmp
+                                
+                                if not disease: continue
+                                
+                                try:
+                                    y = int(str(row[year_col])[:4]) if year_col else 2024
+                                except: y = 2024
+                                
+                                if y < 2010 or y > 2026: continue
+                                
+                                val = parse_numeric(row[val_col])
+                                if val and val > 0:
+                                    key = (disease, y)
+                                    aggregated[key] = max(aggregated.get(key, 0), int(val))
+                            
+                            # Memory cleanup after processing sheet
+                            del df
+                            gc.collect()
+                    except Exception as e:
+                        logger.debug(f"  Erreur scan Excel {filename}: {e}")
+
+    # Distribute aggregated data
+    logger.info(f"  📊 Distribution de {len(aggregated)} séries temporelles identifiées...")
     for (disease, year), national_cases in aggregated.items():
         d_date = date(year, 1, 1)
-        total_entries += _distribute_cases_to_zones(
-            zones, total_pop, disease, d_date, national_cases,
-        )
+        _distribute_cases_to_zones(zones, total_pop, disease, d_date, national_cases)
 
-    logger.info(f"✅ CSV extra: {total_entries} entrées supplémentaires.")
+    logger.info(f"✅ Injection clinique étendue terminée.")
 
 
 # ---------------------------------------------------------------------------
@@ -1267,9 +1346,9 @@ def run_full_pipeline():
 
     # Step 5: Extra
     logger.info("\n" + "─" * 50)
-    logger.info("ÉTAPE 8/9: CSV cliniques supplémentaires")
+    logger.info("ÉTAPE 8/9: Scan exhaustif des fichiers (CSV/Excel/GHO)")
     logger.info("─" * 50)
-    inject_extra_csv_data()
+    inject_extra_clinical_data()
 
     logger.info("\n" + "─" * 50)
     logger.info("ÉTAPE 9/9: Structures sanitaires OSM")
