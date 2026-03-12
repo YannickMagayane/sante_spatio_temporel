@@ -144,3 +144,40 @@ class ClimateData(models.Model):
     
     class Meta:
         unique_together = ('health_zone', 'month')
+
+
+class TaskRun(models.Model):
+    """
+    Modèle pour tracker l'exécution des tâches longues (entraînement, ingestion HDX).
+    """
+    TASK_TYPE_CHOICES = [
+        ('train', 'Entraînement des modèles'),
+        ('ingest', 'Ingestion de données HDX'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'En attente'),
+        ('running', 'En cours'),
+        ('completed', 'Complété'),
+        ('failed', 'Échoué'),
+    ]
+    
+    task_type = models.CharField(_("Type de tâche"), max_length=20, choices=TASK_TYPE_CHOICES)
+    status = models.CharField(_("Statut"), max_length=20, choices=STATUS_CHOICES, default='pending')
+    progress = models.IntegerField(_("Progrès (%)"), default=0)
+    
+    started_at = models.DateTimeField(_("Démarrage"), null=True, blank=True)
+    completed_at = models.DateTimeField(_("Fin"), null=True, blank=True)
+    
+    output_log = models.TextField(_("Journal de sortie"), blank=True)
+    error_log = models.TextField(_("Journal d'erreur"), blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = _("Exécution de tâche")
+        verbose_name_plural = _("Exécutions de tâches")
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.get_task_type_display()} - {self.get_status_display()}"

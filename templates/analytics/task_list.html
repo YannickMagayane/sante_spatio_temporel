@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}Gestion des Tâches - HealthDRC{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">📋 Gestion des Tâches</h1>
+        <a href="{% url 'analytics:dashboard' %}" class="text-blue-600 hover:underline">← Retour au tableau de bord</a>
+    </div>
+
+    <!-- Boutons d'action -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <form method="post" action="{% url 'analytics:launch_training' %}" class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+            {% csrf_token %}
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-xl font-bold mb-2">🧠 Entraîner les Modèles</h3>
+                    <p class="text-purple-100 text-sm mb-4">
+                        Entraîner les modèles LSTM/CNN sur les données disponibles.
+                        Cette opération peut prendre plusieurs minutes.
+                    </p>
+                </div>
+                <button type="submit" class="bg-white text-purple-600 px-6 py-3 rounded-lg font-bold hover:bg-purple-50 transition">
+                    Lancer
+                </button>
+            </div>
+        </form>
+
+        <form method="post" action="{% url 'analytics:launch_ingest' %}" class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+            {% csrf_token %}
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-xl font-bold mb-2">📥 Injecter les Données HDX</h3>
+                    <p class="text-green-100 text-sm mb-4">
+                        Télécharger et injecter les données sanitaires depuis HDX.
+                        Cette opération ingère les dernières données disponibles.
+                    </p>
+                </div>
+                <button type="submit" class="bg-white text-green-600 px-6 py-3 rounded-lg font-bold hover:bg-green-50 transition">
+                    Lancer
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Messages de succès/avertissement -->
+    {% if messages %}
+    <div class="mb-6">
+        {% for message in messages %}
+        <div class="p-4 rounded-lg mb-3 {% if message.tags %}bg-{{ message.tags }}-100 text-{{ message.tags }}-800{% else %}bg-blue-100 text-blue-800{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Historique des tâches -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-xl font-bold text-gray-900">⏱️ Historique des Tâches</h2>
+        </div>
+
+        {% if task_runs %}
+        <div class="divide-y">
+            {% for task in task_runs %}
+            <div class="px-6 py-4 hover:bg-gray-50 transition" hx-trigger="load, every 3s" hx-get="{% url 'analytics:task_status_api' task.id %}">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <h3 class="font-bold text-lg text-gray-900">
+                            {% if task.task_type == 'train' %}
+                                🧠 Entraînement des modèles
+                            {% elif task.task_type == 'ingest' %}
+                                📥 Ingestion HDX
+                            {% else %}
+                                📦 {{ task.get_task_type_display }}
+                            {% endif %}
+                        </h3>
+                        <p class="text-sm text-gray-500">
+                            Créé le {{ task.created_at|date:"d M Y H:i" }}
+                            {% if task.started_at %}
+                                | Démarré le {{ task.started_at|date:"d M Y H:i" }}
+                            {% endif %}
+                        </p>
+                    </div>
+                    <span class="px-3 py-1 rounded-full text-sm font-bold {% if task.status == 'completed' %}bg-green-100 text-green-800{% elif task.status == 'running' %}bg-blue-100 text-blue-800{% elif task.status == 'failed' %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {% if task.status == 'running' %}
+                            ⏳ En cours
+                        {% elif task.status == 'completed' %}
+                            ✅ Complété
+                        {% elif task.status == 'failed' %}
+                            ❌ Échoué
+                        {% else %}
+                            ⏰ En attente
+                        {% endif %}
+                    </span>
+                </div>
+
+                <!-- Barre de progression -->
+                {% if task.status == 'running' or task.status == 'completed' %}
+                <div class="mb-3">
+                    <div class="flex justify-between mb-1">
+                        <span class="text-sm font-semibold text-gray-700">Progrès</span>
+                        <span class="text-sm font-semibold text-gray-700">{{ task.progress }}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                            class="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-300"
+                            style="width: {{ task.progress }}%"
+                        ></div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Logs -->
+                {% if task.output_log %}
+                <details class="mb-3">
+                    <summary class="cursor-pointer text-sm text-blue-600 hover:text-blue-800 font-semibold">
+                        📋 Voir la sortie
+                    </summary>
+                    <div class="mt-2 bg-gray-900 text-gray-100 p-3 rounded text-xs overflow-x-auto font-mono max-h-48">
+                        {{ task.output_log }}
+                    </div>
+                </details>
+                {% endif %}
+
+                {% if task.error_log %}
+                <details class="mb-3">
+                    <summary class="cursor-pointer text-sm text-red-600 hover:text-red-800 font-semibold">
+                        ⚠️ Erreurs
+                    </summary>
+                    <div class="mt-2 bg-red-50 border border-red-200 text-red-800 p-3 rounded text-xs overflow-x-auto font-mono max-h-48">
+                        {{ task.error_log }}
+                    </div>
+                </details>
+                {% endif %}
+
+                {% if task.completed_at %}
+                <p class="text-xs text-gray-500">
+                    Durée : {% widthratio task.completed_at|timesince task.started_at 1 1 %}
+                </p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="px-6 py-8 text-center text-gray-500">
+            <p class="text-lg">Aucune tâche pour le moment</p>
+            <p class="text-sm">Lancez une tâche d'entraînement ou d'ingestion pour commencer.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    
+    .animate-spin {
+        animation: spin 1s linear infinite;
+    }
+</style>
+{% endblock %}

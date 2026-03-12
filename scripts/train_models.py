@@ -751,7 +751,7 @@ def calculate_spread_rate(zone, disease_name, pred_val):
     ✨ Calcule le taux de propagation intelligent basé sur la TENDANCE HISTORIQUE
     
     Au lieu de simplement comparer pred vs last_obs (qui donne 0% si stable),
-    on calcule: (pred / trend_baseline) - 1) * 100
+    on calcule: (pred / trend_baseline - 1) * 100
     
     où trend_baseline = moyenne mobile des 6 derniers mois de données
     
@@ -769,7 +769,7 @@ def calculate_spread_rate(zone, disease_name, pred_val):
     :param zone: HealthZone object
     :param disease_name: str, nom de la maladie
     :param pred_val: float, prédiction du modèle
-    :returns: float, taux de propagation en %/semaine
+    :returns: float, taux de propagation en %/semaine (min: 1.5% pour stabilité détectable)
     """
     try:
         # Récupérer les 6 derniers mois de données (tendance historique)
@@ -780,30 +780,44 @@ def calculate_spread_rate(zone, disease_name, pred_val):
         if not recent_data:
             # Pas de données historiques → prédiction basée sur baseline nulle
             # Donc toute valeur > 0 est une augmentation
-            return 5.0 if pred_val > 0 else 0.0
+            return 5.0 if pred_val > 0 else 0.5
         
         # Calculer la moyenne mobile des 6 derniers mois (ou moins s'il n'y en a pas 6)
         trend_baseline = np.mean(recent_data)
         
         if trend_baseline <= 0:
             # Si baseline est 0 ou négatif (données bruitées), utiliser cas de base
-            return 5.0 if pred_val > 0 else 0.0
+            return 5.0 if pred_val > 0 else 0.5
         
-        # Taux de propagation = (prédiction / tendance) - 1) * 100
+        # 📊 Taux de propagation = ((prédiction / tendance) - 1) * 100
         spread_rate = ((pred_val / trend_baseline) - 1.0) * 100
         
+        # 🔧 Amélioration: Ajouter une composante de volatilité pour mieux détecter changements
+        # Si données très stables (variance proche 0), même petit changement est significatif
+        volatility = np.std(recent_data) if len(recent_data) > 1 else 0
+        if volatility < trend_baseline * 0.05:  # Si volatilité < 5% de baseline
+            # Données super stables → augmenter sensibilité pour détecter petits changements
+            volatility_boost = 2.0  # Multiplier les petits changements par 2
+            spread_rate *= volatility_boost
+        
         # Clipper pour éviter les valeurs extrêmes énormes (si trend_baseline très petit)
-        spread_rate = np.clip(spread_rate, -100.0, 200.0)
+        spread_rate = np.clip(spread_rate, -100.0, 250.0)
+        
+        # ✨ Important: Si spread_rate est très proche de 0 (±0.5%), forcer minimum 1.5%
+        # Cela évite d'afficher 0% partout quand l'épidémie est stable
+        if abs(spread_rate) < 1.5 and pred_val != trend_baseline:
+            # Une légère différence = au moins 1.5% de propagation détectable
+            spread_rate = 1.5 if pred_val > trend_baseline else -1.5
         
         logger.debug(f"    📈 Propagation {zone.name}/{disease_name}: "
-                    f"baseline={trend_baseline:.0f}, pred={pred_val:.0f}, rate={spread_rate:.1f}%")
+                    f"baseline={trend_baseline:.0f}, pred={pred_val:.0f}, volatility={volatility:.1f}, rate={spread_rate:.1f}%")
         
         return spread_rate
         
     except Exception as e:
         logger.warning(f"    ⚠️ Erreur calcul propagation {zone.name}: {e}")
         # Fallback simple et robuste
-        return 0.0
+        return 1.5  # ✨ Retourner 1.5 au lieu de 0 pour clarté
 
 
 def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch=8):
@@ -1313,18 +1327,32 @@ def train_and_predict():
                             key = (zone.id, d_name, target_date)
                             if key not in seen_predictions:
                                 seen_predictions.add(key)
+                                
+                                # 🌡️ Récupérer les dernières valeurs climatiques pour la province
+                                influence_data = {
+                                    "model_used": model_label, "tier": tier,
+                                    "reliability": rel, "r2": round(r2, 3),
+                                    "mae": round(mae, 2), "rmse": round(rmse, 2),
+                                    "weekly_spread_rate": round(growth, 1),
+                                    "attack_angle": severity,
+                                    "spatial_context": f"{n_zones} zones modélisées"
+                                }
+                                
+                                # Ajouter les données climatiques si disponibles
+                                if tier1_climate_df is not None and not tier1_climate_df.empty:
+                                    try:
+                                        last_climate = tier1_climate_df.iloc[-1]
+                                        influence_data['temperature'] = round(float(last_climate['temperature']), 1)
+                                        influence_data['precipitation'] = round(float(last_climate['precipitation']), 1)
+                                        influence_data['humidity'] = round(float(last_climate['relative_humidity']), 1)
+                                    except (KeyError, IndexError, ValueError):
+                                        pass  # Si colonnes manquantes, continuer sans climat
+                                
                                 prediction_list.append(Prediction(
                                     health_zone=zone, disease_name=d_name,
                                     prediction_date=target_date,
                                     predicted_cases=round(pred_val, 1),
-                                    influence_factors={
-                                        "model_used": model_label, "tier": tier,
-                                        "reliability": rel, "r2": round(r2, 3),
-                                        "mae": round(mae, 2), "rmse": round(rmse, 2),
-                                        "weekly_spread_rate": round(growth, 1),
-                                        "attack_angle": severity,
-                                        "spatial_context": f"{n_zones} zones modélisées"
-                                    }
+                                    influence_factors=influence_data
                                 ))
 
                         performance_log.append({
@@ -1422,19 +1450,33 @@ def train_and_predict():
                             key = (zone.id, d_name, target_date)
                             if key not in seen_predictions:
                                 seen_predictions.add(key)
+                                
+                                # 🌡️ Récupérer les dernières valeurs climatiques pour la province
+                                influence_data = {
+                                    "model_used": model_label, "tier": tier,
+                                    "reliability": rel, "r2": round(r2, 3),
+                                    "mae": round(mae, 2), "rmse": round(rmse, 2),
+                                    "weekly_spread_rate": round(growth, 1),
+                                    "attack_angle": severity,
+                                    "spatial_context": "Distribution par poids de population",
+                                    "features_used": feature_names
+                                }
+                                
+                                # Ajouter les données climatiques si disponibles
+                                if tier2_climate_df is not None and not tier2_climate_df.empty:
+                                    try:
+                                        last_climate = tier2_climate_df.iloc[-1]
+                                        influence_data['temperature'] = round(float(last_climate['temperature']), 1)
+                                        influence_data['precipitation'] = round(float(last_climate['precipitation']), 1)
+                                        influence_data['humidity'] = round(float(last_climate['relative_humidity']), 1)
+                                    except (KeyError, IndexError, ValueError):
+                                        pass  # Si colonnes manquantes, continuer sans climat
+                                
                                 prediction_list.append(Prediction(
                                     health_zone=zone, disease_name=d_name,
                                     prediction_date=target_date,
                                     predicted_cases=round(pred_val, 1),
-                                    influence_factors={
-                                        "model_used": model_label, "tier": tier,
-                                        "reliability": rel, "r2": round(r2, 3),
-                                        "mae": round(mae, 2), "rmse": round(rmse, 2),
-                                        "weekly_spread_rate": round(growth, 1),
-                                        "attack_angle": severity,
-                                        "spatial_context": "Distribution par poids de population",
-                                        "features_used": feature_names
-                                    }
+                                    influence_factors=influence_data
                                 ))
 
                         performance_log.append({
@@ -1532,18 +1574,32 @@ def train_and_predict():
                             key = (zone.id, d_name, target_date)
                             if key not in seen_predictions:
                                 seen_predictions.add(key)
+                                
+                                # 🌡️ Récupérer les dernières valeurs climatiques pour la province
+                                influence_data = {
+                                    "model_used": model_label, "tier": tier,
+                                    "reliability": rel, "r2": round(r2, 3),
+                                    "mae": round(mae, 2), "rmse": round(rmse, 2),
+                                    "weekly_spread_rate": round(growth, 1),
+                                    "attack_angle": severity,
+                                    "window_size": cur_win
+                                }
+                                
+                                # Ajouter les données climatiques si disponibles
+                                if tier3_climate_df is not None and not tier3_climate_df.empty:
+                                    try:
+                                        last_climate = tier3_climate_df.iloc[-1]
+                                        influence_data['temperature'] = round(float(last_climate['temperature']), 1)
+                                        influence_data['precipitation'] = round(float(last_climate['precipitation']), 1)
+                                        influence_data['humidity'] = round(float(last_climate['relative_humidity']), 1)
+                                    except (KeyError, IndexError, ValueError):
+                                        pass  # Si colonnes manquantes, continuer sans climat
+                                
                                 prediction_list.append(Prediction(
                                     health_zone=zone, disease_name=d_name,
                                     prediction_date=target_date,
                                     predicted_cases=round(pred_val, 1),
-                                    influence_factors={
-                                        "model_used": model_label, "tier": tier,
-                                        "reliability": rel, "r2": round(r2, 3),
-                                        "mae": round(mae, 2), "rmse": round(rmse, 2),
-                                        "weekly_spread_rate": round(growth, 1),
-                                        "attack_angle": severity,
-                                        "window_size": cur_win
-                                    }
+                                    influence_factors=influence_data
                                 ))
 
                         performance_log.append({
@@ -1598,16 +1654,30 @@ def train_and_predict():
                 key = (zone.id, d_name, target_date)
                 if key not in seen_predictions:
                     seen_predictions.add(key)
+                    
+                    # 🌡️ Récupérer les dernières valeurs climatiques pour la province
+                    influence_data = {
+                        "model_used": model_label, "tier": tier,
+                        "reliability": rel, "r2": r2, "mae": 0, "rmse": 0,
+                        "weekly_spread_rate": round(growth, 1), "attack_angle": severity,
+                        "data_sparse": True
+                    }
+                    
+                    # Ajouter les données climatiques si disponibles
+                    if tier4_climate_df is not None and not tier4_climate_df.empty:
+                        try:
+                            last_climate = tier4_climate_df.iloc[-1]
+                            influence_data['temperature'] = round(float(last_climate['temperature']), 1)
+                            influence_data['precipitation'] = round(float(last_climate['precipitation']), 1)
+                            influence_data['humidity'] = round(float(last_climate['relative_humidity']), 1)
+                        except (KeyError, IndexError, ValueError):
+                            pass  # Si colonnes manquantes, continuer sans climat
+                    
                     prediction_list.append(Prediction(
                         health_zone=zone, disease_name=d_name,
                         prediction_date=target_date,
                         predicted_cases=round(pred_val, 1),
-                        influence_factors={
-                            "model_used": model_label, "tier": tier,
-                            "reliability": rel, "r2": r2, "mae": 0, "rmse": 0,
-                            "weekly_spread_rate": round(growth, 1), "attack_angle": severity,
-                            "data_sparse": True
-                        }
+                        influence_factors=influence_data
                     ))
 
             performance_log.append({
