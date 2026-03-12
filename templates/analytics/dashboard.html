@@ -150,24 +150,34 @@
         <h3 class="text-[10px] font-black uppercase text-purple-400 mb-4 tracking-widest flex items-center gap-2">
             <span>⚙️</span> Gestion des Données & Modèles
         </h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <!-- Bouton Entraînement -->
             <form method="post" action="{% url 'analytics:launch_training' %}" class="inline-block w-full">
                 {% csrf_token %}
                 <button type="submit" 
                     class="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-[10px] font-black uppercase rounded-xl border border-purple-400/30 transition-all flex items-center justify-center gap-2"
                     onclick="return confirm('Lancer l\'entraînement des modèles ? Cela peut prendre plusieurs minutes.')">
-                    <span>🧠</span> Entraîner les Modèles (LSTM/CNN)
+                    <span>🧠</span> Entraîner les Modèles
                 </button>
             </form>
             
-            <!-- Bouton Ingestion -->
+            <!-- Bouton Ingestion HDX -->
             <form method="post" action="{% url 'analytics:launch_ingest' %}" class="inline-block w-full">
                 {% csrf_token %}
                 <button type="submit"
                     class="w-full px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white text-[10px] font-black uppercase rounded-xl border border-green-400/30 transition-all flex items-center justify-center gap-2"
                     onclick="return confirm('Injecter les données HDX ? Cela synchronisera la base de données.')">
-                    <span>📥</span> Injecter Données HDX
+                    <span>📥</span> Injecter HDX
+                </button>
+            </form>
+
+            <!-- Bouton Ingestion Climatique -->
+            <form method="post" action="{% url 'analytics:launch_ingest_climate' %}" class="inline-block w-full">
+                {% csrf_token %}
+                <button type="submit"
+                    class="w-full px-4 py-3 bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-500 hover:to-cyan-600 text-white text-[10px] font-black uppercase rounded-xl border border-cyan-400/30 transition-all flex items-center justify-center gap-2"
+                    onclick="return confirm('Injecter les données climatiques ERA5-Land ? Cela remplit la base climatique.')">
+                    <span>🌡️</span> Injecter Climat
                 </button>
             </form>
         </div>
@@ -175,7 +185,8 @@
             <span>📋</span>
             <div>
                 <p><strong>Entraînement :</strong> Met à jour les modèles d'IA avec les données disponibles. Utilisez ceci si vous avez de nouvelles données cliniques.</p>
-                <p><strong>Ingestion :</strong> Synchronise la base de données depuis HDX. Récupère les données géographiques, sanitaires et climatiques.</p>
+                <p><strong>Ingestion HDX :</strong> Synchronise la base de données depuis HDX. Récupère les données géographiques et sanitaires.</p>
+                <p><strong>Ingestion Climat :</strong> Remplit la table climatique avec ERA5-Land pour une analyse épidémiologique améliorée.</p>
                 <p class="mt-1"><a href="{% url 'analytics:task_list' %}" class="text-brand-400 hover:underline font-bold">Voir l'historique des tâches →</a></p>
             </div>
         </div>
@@ -544,30 +555,52 @@
                         </div>
                     </div>
 
-                    <!-- Graph 5: Impact Climatique ⭐ NOUVEAU -->
+                    <!-- Graph 5: Impact Climatique ⭐ DONNÉES RÉELLES ERA5-LAND -->
                     <div class="glass p-6 rounded-[2.5rem] border-white/5 transition-all hover:border-cyan-500/20">
                         <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex justify-between items-center"
-                            title="Corrélation entre conditions climatiques et propagation épidémique">
+                            title="Corrélation entre conditions climatiques réelles (ERA5-Land) et propagation épidémique">
                             <span class="flex items-center gap-2"><span
-                                    class="w-2 h-2 rounded-full bg-cyan-500"></span> 🌡️ Impact Climatique</span>
+                                    class="w-2 h-2 rounded-full bg-cyan-500"></span> 🌡️ Impact Climatique (ERA5-Land)</span>
                             <span
                                 class="bg-white/10 rounded-full w-4 h-4 flex items-center justify-center text-[9px] cursor-help text-white">?</span>
                         </h4>
                         <div class="p-4 bg-slate-900/30 rounded-lg border border-cyan-500/20">
                             <div style="font-size: 12px; color: #e0f2fe; line-height: 1.6;">
-                                <p style="margin: 0 0 8px 0; font-weight: bold; color: #06b6d4;">{{ climate_impact.climate_explanation }}</p>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
-                                    <div style="background: rgba(30,144,255,0.1); padding: 8px; border-left: 3px solid #1e90ff;">
-                                        <div style="font-weight: bold; color: #1e90ff;">🌡️ Température</div>
-                                        <div style="color: #b0e0e6;">r = {{ climate_impact.temperature_correlation }}</div>
-                                    </div>
-                                    <div style="background: rgba(30,144,255,0.1); padding: 8px; border-left: 3px solid #00bfff;">
-                                        <div style="font-weight: bold; color: #00bfff;">🌧️ Précipitations</div>
-                                        <div style="color: #b0e0e6;">r = {{ climate_impact.precipitation_correlation }}</div>
+                                <p style="margin: 0 0 12px 0; font-weight: bold; color: #06b6d4;">{{ climate_impact.climate_explanation }}</p>
+                                
+                                <!-- Conditions Actuelles -->
+                                <div style="margin-bottom: 12px; padding: 8px; background: rgba(7,89,133,0.15); border-left: 3px solid #0759a8; border-radius: 4px;">
+                                    <div style="font-size: 9px; font-weight: bold; color: #7dd3c0; text-transform: uppercase; margin-bottom: 4px;">📍 Conditions Actuelles</div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; font-size: 10px;">
+                                        <div style="color: #e0f2fe;">
+                                            🌡️ {% if climate_impact.current_temperature is not None %}{{ climate_impact.current_temperature }}°C{% else %}N/A{% endif %}
+                                        </div>
+                                        <div style="color: #e0f2fe;">
+                                            🌧️ {% if climate_impact.current_precipitation is not None %}{{ climate_impact.current_precipitation }}mm{% else %}N/A{% endif %}
+                                        </div>
+                                        <div style="color: #e0f2fe;">
+                                            💨 {% if climate_impact.current_humidity is not None %}{{ climate_impact.current_humidity }}%{% else %}N/A{% endif %}
+                                        </div>
                                     </div>
                                 </div>
-                                <p style="margin: 8px 0 0 0; font-size: 9px; color: #94a3b8; font-style: italic;">
-                                    Coefficient de corrélation Pearson (r). r > 0.3 = corrélation significative.
+                                
+                                <!-- Corrélations Pearson -->
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 10px;">
+                                    <div style="background: rgba(30,144,255,0.1); padding: 8px; border-left: 3px solid #1e90ff; border-radius: 4px;">
+                                        <div style="font-weight: bold; color: #1e90ff;">🌡️ Température</div>
+                                        <div style="color: #b0e0e6; font-weight: bold; font-size: 11px;">r = {{ climate_impact.temperature_correlation }}</div>
+                                    </div>
+                                    <div style="background: rgba(30,144,255,0.1); padding: 8px; border-left: 3px solid #00bfff; border-radius: 4px;">
+                                        <div style="font-weight: bold; color: #00bfff;">🌧️ Précipitations</div>
+                                        <div style="color: #b0e0e6; font-weight: bold; font-size: 11px;">r = {{ climate_impact.precipitation_correlation }}</div>
+                                    </div>
+                                    <div style="background: rgba(30,144,255,0.1); padding: 8px; border-left: 3px solid #06b6d4; border-radius: 4px;">
+                                        <div style="font-weight: bold; color: #06b6d4;">💨 Humidité</div>
+                                        <div style="color: #b0e0e6; font-weight: bold; font-size: 11px;">r = {{ climate_impact.humidity_correlation }}</div>
+                                    </div>
+                                </div>
+                                <p style="margin: 8px 0 0 0; font-size: 8px; color: #64748b; font-style: italic;">
+                                    Données ERA5-Land • Corrélation Pearson (r) • r > 0.3 = relation significative
                                 </p>
                             </div>
                         </div>
@@ -579,6 +612,24 @@
                     <h3 class="text-xl font-black text-white mb-4 flex items-center gap-2">
                         <span class="text-2xl">🌍</span> Influence du Climat sur l'Épidémiologie
                     </h3>
+                    
+                    <!-- ⭐ LÉGENDE CLIMATIQUE INTELLIGENTE DYNAMIQUE -->
+                    <div class="mb-6 p-4 bg-slate-900/40 rounded-lg border border-cyan-500/20">
+                        <div style="font-size: 9px; font-weight: bold; color: #7dd3c0; text-transform: uppercase; margin-bottom: 8px;">🎨 Légende Adaptée aux Conditions Actuelles</div>
+                        <div class="space-y-2">
+                            {% for item in climate_legend %}
+                            <div style="display: flex; gap: 8px; align-items: start; font-size: 9px;">
+                                <span style="color: {{ item.color }}; font-size: 14px; font-weight: bold;">{{ item.icon }}</span>
+                                <span style="color: #e0f2fe; line-height: 1.4;">{{ item.description }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <p style="margin-top: 8px; font-size: 8px; color: #64748b; font-style: italic;">
+                            ⚠️ Les vecteurs (moustiques, tiques) sont plus actifs à 20-28°C avec humidité >60%.
+                        </p>
+                    </div>
+                    
+                    <!-- 3 Facteurs Climatiques Principaux -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div class="bg-gradient-to-br from-orange-500/10 to-red-500/10 p-4 rounded-lg border border-orange-500/20">
                             <div class="text-sm font-bold text-orange-300 mb-2">🌡️ Température</div>

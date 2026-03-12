@@ -52,6 +52,8 @@ class TaskRunner:
                 TaskRunner._train_models(task_run)
             elif task_type == 'ingest':
                 TaskRunner._ingest_hdx_data(task_run)
+            elif task_type == 'ingest_climate':
+                TaskRunner._ingest_climate_data(task_run)
             
             # Succès
             task_run.status = 'completed'
@@ -131,4 +133,37 @@ class TaskRunner:
             
         except Exception as e:
             logger.error(f"[Task {task_run.id}] Erreur ingestion: {e}")
+            raise
+    
+    @staticmethod
+    def _ingest_climate_data(task_run: TaskRun):
+        """Injecter les données climatiques ERA5-Land."""
+        logger.info(f"[Task {task_run.id}] Démarrage de l'ingestion climatique...")
+        
+        script_path = TaskRunner.SCRIPTS_DIR / "ingest_hdx.py"
+        
+        try:
+            # Utiliser subprocess avec l'argument --climate-only
+            process = subprocess.Popen(
+                ["python", str(script_path), "--climate-only"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd="/app"
+            )
+            
+            # Capturer la sortie
+            stdout, stderr = process.communicate()
+            
+            task_run.output_log = stdout
+            if stderr:
+                task_run.error_log = stderr
+            
+            if process.returncode != 0:
+                raise Exception(f"Script retourné code {process.returncode}")
+            
+            logger.info(f"[Task {task_run.id}] Ingestion climatique complétée avec succès")
+            
+        except Exception as e:
+            logger.error(f"[Task {task_run.id}] Erreur ingestion climatique: {e}")
             raise

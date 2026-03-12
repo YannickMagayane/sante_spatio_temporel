@@ -673,65 +673,247 @@ class DashboardView(TemplateView):
         context['chart_temp_title'] = "📈 Évolution Temporelle : Historique (2014+) + Prédictions IA Récentes"
         
         # 5. GRAPHIQUE 5 : Corrélation Climat-Épidémie ⭐ NOUVEAU
-        # Calculer corrélations climat-enfants depuis influence_factors stockés en DB
+        # Récupérer VRAIES données climatiques depuis ClimateData (ERA5-Land)
         climate_impact_data = {
-            'temperature_correlation': 0.42,
-            'precipitation_correlation': 0.31,
-            'humidity_correlation': 0.28,
-            'climate_explanation': "🌡️ Température corrélée à la propagation épidémique."
+            'temperature_correlation': 0.0,
+            'precipitation_correlation': 0.0,
+            'humidity_correlation': 0.0,
+            'current_temperature': None,
+            'current_precipitation': None,
+            'current_humidity': None,
+            'climate_explanation': "📊 Analyse climatique en cours..."
         }
         
         try:
-            # Extraire données climatiques depuis les influence_factors des prédictions
-            all_preds = Prediction.objects.all()
-            temp_climate = []
-            precip_climate = []
-            cases_list = []
+            from .models import ClimateData
+            from scipy.stats import pearsonr
+            import numpy as np
             
-            for pred in all_preds:
-                if pred.influence_factors:
-                    inf = pred.influence_factors
-                    # Récupérer température, précipitations, cas depuis les facteurs
-                    if 'temperature' in inf and 'cases_count' in inf:
-                        temp_climate.append(float(inf.get('temperature', 25)))
-                        cases_list.append(float(pred.predicted_cases))
-                    if 'precipitation' in inf and 'cases_count' in inf:
-                        precip_climate.append(float(inf.get('precipitation', 100)))
+            # Base QuerySet pour ClimateData
+            climate_qs = ClimateData.objects.all()
+            if selected_province != 'all':
+                climate_qs = climate_qs.filter(health_zone__territory__province__name=selected_province)
             
-            # Calculer corrélations Pearson
-            if len(temp_climate) > 5 and len(cases_list) > 5:
+            # Récupérer les dernières données climatiques réelles de la BD
+            latest_climate = climate_qs.order_by('-month').first()
+            if latest_climate:
+                # Convertir température de Kelvin en Celsius (K - 273.15)
+                temp_celsius = round(latest_climate.temperature - 273.15, 1)
+                climate_impact_data['current_temperature'] = temp_celsius
+                # Précipitations: garder 3 décimales car valeurs très petites (0.001-0.122mm)
+                climate_impact_data['current_precipitation'] = round(latest_climate.precipitation, 3)
+                if latest_climate.humidity is not None:
+                    climate_impact_data['current_humidity'] = round(latest_climate.humidity, 1)
+            
+            # Construire les listes pour corrélations Pearson
+            # Récupérer tous les couples (température, cas) et (précipitation, cas)
+            temp_cases = []
+            precip_cases = []
+            humidity_cases = []
+            
+            # Boucle sur les zones de santé avec à la fois ClimateData et Predictions
+            zones_with_both = HealthZone.objects.filter(
+                climatedata__isnull=False,
+                prediction__isnull=False
+            ).distinct()
+            
+            if selected_province != 'all':
+                zones_with_both = zones_with_both.filter(territory__province__name=selected_province)
+            
+            for zone in zones_with_both.iterator():
+                # Récupérer tous les mois climatiques pour cette zone
+                climate_data = ClimateData.objects.filter(health_zone=zone).order_by('-month')
+                
+                for clim in climate_data[:36]:  # Derniers 36 mois pour avoir assez de points
+                    # ⭐ IMPORTANT: Utiliser ClinicalData (données RÉELLES) et non Predictions (qui sont futures)
+                    # ClinicalData couvre l'historique (2010-2025), Predictions couvrent le futur (2026)
+                    
+                    # Récupérer les DONNÉES RÉELLES pour ce mois/zone (tous les diseases)
+                    clinical = ClinicalData.objects.filter(
+                        health_zone=zone,
+                        month__year=clim.month.year,
+                        month__month=clim.month.month
+                    )
+                    
+                    if selected_disease != 'all':
+                        clinical = clinical.filter(disease_name=selected_disease)
+                    
+                    # Summar les cas réels de ce mois
+                    total_cases = clinical.aggregate(Sum('cases_count'))['cases_count__sum'] or 0
+                    
+                    if total_cases > 0:
+                        temp_cases.append((clim.temperature, float(total_cases)))
+                        precip_cases.append((clim.precipitation, float(total_cases)))
+                        if clim.humidity is not None:
+                            humidity_cases.append((clim.humidity, float(total_cases)))
+            
+            # Calculer corrélations Pearson si on a assez de points (min 10)
+            if len(temp_cases) >= 10:
                 try:
-                    from scipy.stats import pearsonr
-                    if len(temp_climate) == len(cases_list):
-                        corr_t, _ = pearsonr(temp_climate, cases_list)
-                        climate_impact_data['temperature_correlation'] = round(abs(corr_t), 2)
+                    temp_vals = np.array([x[0] for x in temp_cases])
+                    cases_vals = np.array([x[1] for x in temp_cases])
+                    corr_t, _ = pearsonr(temp_vals, cases_vals)
+                    climate_impact_data['temperature_correlation'] = round(abs(corr_t), 2)
                 except:
                     pass
             
-            if len(precip_climate) > 5 and len(cases_list) > 5:
+            if len(precip_cases) >= 10:
                 try:
-                    from scipy.stats import pearsonr
-                    if len(precip_climate) == len(cases_list):
-                        corr_p, _ = pearsonr(precip_climate, cases_list)
-                        climate_impact_data['precipitation_correlation'] = round(abs(corr_p), 2)
+                    precip_vals = np.array([x[0] for x in precip_cases])
+                    cases_vals = np.array([x[1] for x in precip_cases])
+                    corr_p, _ = pearsonr(precip_vals, cases_vals)
+                    climate_impact_data['precipitation_correlation'] = round(abs(corr_p), 2)
                 except:
                     pass
             
-            # Générer explication scientifique basée sur les corrélations
+            if len(humidity_cases) >= 10:
+                try:
+                    humidity_vals = np.array([x[0] for x in humidity_cases])
+                    cases_vals = np.array([x[1] for x in humidity_cases])
+                    corr_h, _ = pearsonr(humidity_vals, cases_vals)
+                    climate_impact_data['humidity_correlation'] = round(abs(corr_h), 2)
+                except:
+                    pass
+            
+            # Générer explication scientifique basée sur les corrélations RÉELLES
             r_temp = climate_impact_data['temperature_correlation']
             r_precip = climate_impact_data['precipitation_correlation']
+            r_humidity = climate_impact_data['humidity_correlation']
             
-            if r_temp > 0.3 and r_temp > r_precip:
-                climate_impact_data['climate_explanation'] = f"🌡️ Forte corrélation chaleur-épidémie (r={r_temp}). Vecteurs + transmission accélérés quand T° augmente."
-            elif r_precip > 0.3:
-                climate_impact_data['climate_explanation'] = f"🌧️ Strong pluie-épidémie corrélation (r={r_precip}). Eau stagnante favorise reproduction vecteurs."
+            current_temp_str = f"{climate_impact_data['current_temperature']}°C" if climate_impact_data['current_temperature'] is not None else "N/A"
+            current_rain_str = f"{climate_impact_data['current_precipitation']}mm" if climate_impact_data['current_precipitation'] is not None else "N/A"
+            
+            if r_temp > 0.4:
+                climate_impact_data['climate_explanation'] = f"🌡️ FORTE corrélation chaleur-épidémie (r={r_temp}). Température actuelle: {current_temp_str}. Vecteurs + transmission accélérés quand T° augmente."
+            elif r_precip > 0.4:
+                climate_impact_data['climate_explanation'] = f"🌧️ FORTE corrélation pluie-épidémie (r={r_precip}). Pluies actuelles: {current_rain_str}. Eau stagnante favorise reproduction vecteurs."
+            elif r_humidity > 0.3:
+                climate_impact_data['climate_explanation'] = f"💨 Humidité significative (r={r_humidity}). Conditions favorables aux vecteurs. Surveiller sanitaire & eau."
+            elif r_temp > 0.2 or r_precip > 0.2:
+                climate_impact_data['climate_explanation'] = f"📊 Corrélations modérées: Temp={r_temp}, Pluies={r_precip}. Facteurs climatiques partiellement significatifs."
             else:
-                climate_impact_data['climate_explanation'] = f"⛅ Corr. temp={r_temp}, precip={r_precip}. Facteurs climatiques modérément significatifs."
+                climate_impact_data['climate_explanation'] = "⛅ Facteurs climatiques peu corrélés. Autres facteurs (démographie, accès soins) plus déterminants."
+        
         except Exception as e:
-            # Default: pas de corrélation climatique détectée
-            climate_impact_data['climate_explanation'] = "📊 Analyse climatique en cours..."
+            # Default: pas assez de données climatiques disponibles
+            climate_impact_data['climate_explanation'] = "📊 Données climatiques insuffisantes. Analyse en cours..."
         
         context['climate_impact'] = climate_impact_data
+        
+        # ⭐ LÉGENDE CLIMATIQUE INTELLIGENTE
+        # Génère une légende dynamique basée sur les conditions ACTUELLES
+        try:
+            current_temp = climate_impact_data.get('current_temperature')
+            current_humidity = climate_impact_data.get('current_humidity')
+            
+            climate_legend = []
+            
+            # Cas 1: Conditions OPTIMALES pour transmission (T° 20-28°C + Humidité >60%)
+            if current_temp and 20 <= current_temp <= 28 and current_humidity and current_humidity > 60:
+                climate_legend = [
+                    {
+                        'icon': '■',
+                        'color': '#7f1d1d',
+                        'description': f'🔴 RISQUE CRITIQUE (T°={current_temp}°C, H={current_humidity}%) — Conditions OPTIMALES pour vecteurs'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#ef4444',
+                        'description': f'🟡 ALERTE ÉLEVÉE (T° 20-28°C, Humidité >60%) — Transmission maximale détectée'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#fbbf24',
+                        'description': 'Risque modéré (15-20°C ou 28-32°C, ou Humidité 50-60%)'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#0ea5e9',
+                        'description': 'Risque faible (T°<15°C ou >32°C, Humidité<50%)'
+                    }
+                ]
+            
+            # Cas 2: T° dans plage modérée
+            elif current_temp and 15 <= current_temp < 20 or 28 < current_temp <= 32:
+                climate_legend = [
+                    {
+                        'icon': '■',
+                        'color': '#fbbf24',
+                        'description': f'🟡 RISQUE MODÉRÉ (T°={current_temp}°C) — Conditions partiellement favorables'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#0ea5e9',
+                        'description': 'Risque faible (T°<15°C ou >32°C)'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#ef4444',
+                        'description': '🔴 RISQUE CRITIQUE (T° 20-28°C + Humidité >60%)'
+                    }
+                ]
+            
+            # Cas 3: T° très basse ou très haute
+            elif current_temp and (current_temp < 15 or current_temp > 32):
+                climate_legend = [
+                    {
+                        'icon': '■',
+                        'color': '#0ea5e9',
+                        'description': f'🟢 RISQUE FAIBLE (T°={current_temp}°C) — Conditions défavorables pour vecteurs'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#fbbf24',
+                        'description': 'Risque modéré (15-20°C ou 28-32°C, ou Humidité 50-60%)'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#ef4444',
+                        'description': '🔴 RISQUE CRITIQUE (T° 20-28°C + Humidité >60%)'
+                    }
+                ]
+            
+            # Fallback: légende standard
+            if not climate_legend:
+                climate_legend = [
+                    {
+                        'icon': '■',
+                        'color': '#ef4444',
+                        'description': '🔴 RISQUE CRITIQUE (T° 20-28°C + Humidité >60%)'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#fbbf24',
+                        'description': 'Risque modéré (15-20°C ou 28-32°C, Humidité 50-60%)'
+                    },
+                    {
+                        'icon': '■',
+                        'color': '#0ea5e9',
+                        'description': 'Risque faible (T°<15°C ou >32°C, Humidité<50%)'
+                    }
+                ]
+            
+            context['climate_legend'] = climate_legend
+            
+        except Exception as e:
+            # Fallback: légende par défaut
+            context['climate_legend'] = [
+                {
+                    'icon': '■',
+                    'color': '#ef4444',
+                    'description': '🔴 RISQUE CRITIQUE — T° 20-28°C + Humidité >60% (optimal pour vecteurs)'
+                },
+                {
+                    'icon': '■',
+                    'color': '#fbbf24',
+                    'description': '🟡 RISQUE MODÉRÉ — T° 15-20°C ou 28-32°C, Humidité 50-60%'
+                },
+                {
+                    'icon': '■',
+                    'color': '#0ea5e9',
+                    'description': '🟢 RISQUE FAIBLE — T°<15°C ou >32°C, Humidité<50%'
+                }
+            ]
         
         return context
 
@@ -815,6 +997,20 @@ def launch_ingest_view(request):
         else:
             task_run = TaskRunner.run_task_async('ingest')
             messages.success(request, f"Ingestion lancée ! (ID: {task_run.id})")
+    
+    return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:dashboard')))
+
+def launch_ingest_climate_view(request):
+    """Lance l'ingestion des données climatiques ERA5-Land."""
+    if request.method == 'POST':
+        # Vérifier qu'il n'y a pas déjà une tâche en cours
+        pending = TaskRun.objects.filter(task_type='ingest_climate', status__in=['pending', 'running']).exists()
+        
+        if pending:
+            messages.warning(request, "Une ingestion climatique est déjà en cours. Veuillez attendre.")
+        else:
+            task_run = TaskRunner.run_task_async('ingest_climate')
+            messages.success(request, f"Ingestion climatique lancée ! (ID: {task_run.id})")
     
     return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:dashboard')))
 

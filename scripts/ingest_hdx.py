@@ -1388,5 +1388,96 @@ def run_full_pipeline():
     logger.info("=" * 70)
 
 
+def ingest_climate_data():
+    """
+    ⭐ Ingère les données climatiques ERA5-Land depuis les fichiers CSV générés.
+    Remplit la table ClimateData liée aux HealthZones.
+    
+    Strategy: Charger les données synthétiques/réelles par province et associer à chaque zone.
+    """
+    from analytics.models import ClimateData
+    import pandas as pd
+    from datetime import datetime
+    
+    logger.info("\n" + "=" * 70)
+    logger.info("🌡️ INGESTION DONNÉES CLIMATIQUES (ERA5-Land)")
+    logger.info("=" * 70)
+    
+    climate_dir = "data/climat/provinces"
+    
+    if not os.path.exists(climate_dir):
+        logger.warning(f"⚠️ Répertoire {climate_dir} non trouvé. Génération synthétique...")
+        # Importer la fonction de génération depuis climate_data_fetcher
+        try:
+            from scripts.climate_data_fetcher import fetch_climate_for_all_provinces
+            provinces_data = fetch_climate_for_all_provinces(
+                year_range=(2020, 2026),
+                output_dir=climate_dir
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Génération échouée: {e}. Utiliser données statiques...")
+            return
+    
+    # Charger les provinces depuis la BD
+    provinces = Province.objects.all()
+    ingested_count = 0
+    
+    for prov in provinces:
+        climate_file = os.path.join(climate_dir, f"{prov.name.replace(' ', '_')}_climate.csv")
+        
+        if not os.path.exists(climate_file):
+            logger.debug(f"  ⚠️ {prov.name}: fichier climat non trouvé")
+            continue
+        
+        try:
+            # Lire les données climatiques pour la province
+            climate_df = pd.read_csv(climate_file)
+            climate_df['date'] = pd.to_datetime(climate_df['date'])
+            
+            # Récupérer toutes les zones de santé de cette province
+            zones = HealthZone.objects.filter(territory__province=prov)
+            
+            for zone in zones:
+                for _, row in climate_df.iterrows():
+                    try:
+                        month = row['date'].date()
+                        
+                        # Vérifier si ce couple (zone, mois) existe déjà
+                        climate_obj, created = ClimateData.objects.update_or_create(
+                            health_zone=zone,
+                            month=month,
+                            defaults={
+                                'temperature': float(row.get('temperature', 25.0)),
+                                'precipitation': float(row.get('precipitation', 0.1)),
+                                'humidity': float(row.get('relative_humidity', 70.0))
+                            }
+                        )
+                        
+                        if created:
+                            ingested_count += 1
+                    
+                    except (ValueError, KeyError) as e:
+                        logger.debug(f"    ⚠️ Erreur parsing row pour {zone.name}: {e}")
+                        continue
+            
+            logger.info(f"✓ {prov.name:25} — {len(zones)} zones, {len(climate_df)} mois")
+        
+        except Exception as e:
+            logger.warning(f"✗ {prov.name}: {e}")
+            continue
+    
+    logger.info(f"\n✓ Total: {ingested_count} nouveaux enregistrements climatiques ingérés")
+    logger.info("✓ Données climatiques prêtes pour l'analyse épidémiologique")
+
+
 if __name__ == "__main__":
-    run_full_pipeline()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--climate-only', action='store_true', help='Ingérer uniquement données climatiques')
+    args = parser.parse_args()
+    
+    if args.climate_only:
+        ingest_climate_data()
+    else:
+        run_full_pipeline()
+        ingest_climate_data()  # Toujours ingérer le climat après les données HDX

@@ -148,11 +148,12 @@ class ClimateData(models.Model):
 
 class TaskRun(models.Model):
     """
-    Modèle pour tracker l'exécution des tâches longues (entraînement, ingestion HDX).
+    Modèle pour tracker l'exécution des tâches longues (entraînement, ingestion HDX, ingestion climatique).
     """
     TASK_TYPE_CHOICES = [
         ('train', 'Entraînement des modèles'),
         ('ingest', 'Ingestion de données HDX'),
+        ('ingest_climate', 'Ingestion données climatiques'),
     ]
     
     STATUS_CHOICES = [
