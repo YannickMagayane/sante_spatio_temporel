@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ disease }}{% if province %} - {{ province }}{% endif %} | Analyse Interactive{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chart-container {
+        position: relative;
+        width: 100%;
+        margin-bottom: 1rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .chart-container img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-cyan-600 to-blue-700 text-white py-12 px-6 shadow-2xl">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="text-5xl">🦠</div>
+                <div>
+                    <h1 class="text-4xl font-black">{{ disease }}</h1>
+                    {% if province %}
+                    <p class="text-cyan-100 mt-2">📍 Province: <span class="font-bold">{{ province }}</span></p>
+                    {% else %}
+                    <p class="text-cyan-100 mt-2">📊 Analyse Nationale Complète</p>
+                    {% endif %}
+                </div>
+            </div>
+            <p class="text-cyan-100">Vue interactive avec données actualiser & corrélations climatiques</p>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Quick Stats (if province selected) -->
+        {% if stats %}
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+            <!-- Total Cases -->
+            <div class="bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/30 rounded-xl p-6 backdrop-blur">
+                <div class="text-sm font-bold text-red-300 uppercase mb-2">📊 Total Cas</div>
+                <div class="text-4xl font-black text-red-400 mb-1">{{ stats.total_cases|floatformat:0 }}</div>
+                <div class="text-xs text-red-300/70">Historique complet</div>
+            </div>
+
+            <!-- Deaths -->
+            <div class="bg-gradient-to-br from-gray-500/10 to-slate-500/10 border border-gray-500/30 rounded-xl p-6 backdrop-blur">
+                <div class="text-sm font-bold text-gray-300 uppercase mb-2">⚰️ Décès</div>
+                <div class="text-4xl font-black text-gray-300 mb-1">{{ stats.total_deaths|floatformat:0 }}</div>
+                <div class="text-xs text-gray-400">Létalité: {{ stats.fatality_rate }}%</div>
+            </div>
+
+            <!-- Affected Zones -->
+            <div class="bg-gradient-to-br from-purple-500/10 to-indigo-500/10 border border-purple-500/30 rounded-xl p-6 backdrop-blur">
+                <div class="text-sm font-bold text-purple-300 uppercase mb-2">📍 Zones</div>
+                <div class="text-4xl font-black text-purple-400 mb-1">{{ stats.affected_zones }}</div>
+                <div class="text-xs text-purple-300/70">Zones de santé</div>
+            </div>
+
+            <!-- Avg Monthly -->
+            <div class="bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-6 backdrop-blur">
+                <div class="text-sm font-bold text-cyan-300 uppercase mb-2">📈 Moy./Mois</div>
+                <div class="text-4xl font-black text-cyan-400 mb-1">{{ stats.avg_monthly|floatformat:0 }}</div>
+                <div class="text-xs text-cyan-300/70">Moyenne historique</div>
+            </div>
+
+            <!-- Fatality Rate -->
+            <div class="bg-gradient-to-br from-amber-500/10 to-yellow-500/10 border border-amber-500/30 rounded-xl p-6 backdrop-blur">
+                <div class="text-sm font-bold text-amber-300 uppercase mb-2">⚠️ Létalité</div>
+                <div class="text-4xl font-black text-amber-400 mb-1">{{ stats.fatality_rate|floatformat:1 }}%</div>
+                <div class="text-xs text-amber-300/70">Taux de mortalité</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Timeline Chart -->
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-black text-white flex items-center gap-2">
+                    <span class="text-3xl">📈</span>Évolution Temporelle - {{ disease }}
+                </h2>
+                <div class="text-xs text-slate-400">Données: 2010 - 2026</div>
+            </div>
+            <div class="chart-container">
+                {% if timeline %}
+                <img src="data:image/png;base64,{{ timeline }}" alt="Timeline Chart">
+                {% else %}
+                <div class="text-slate-400 text-center py-12">Données non disponibles</div>
+                {% endif %}
+            </div>
+            <div class="mt-6 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div class="text-sm text-slate-300 leading-relaxed">
+                    <strong class="text-cyan-400">💡 Note Scientifique:</strong> 
+                    Cette série temporelle montre les cas confirmés mensuels depuis 2010. 
+                    La ligne rouge représente les tendances observées, essentielles pour la surveillance épidémiologique et l'analyse des tendances.
+                </div>
+            </div>
+        </div>
+
+        <!-- National Predictions Chart -->
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <h3 class="text-xl font-black text-white mb-6 flex items-center gap-2">
+                <span class="text-2xl">🤖</span>Prévisions d'Apprentissage Automatique - Modèles Prédictifs (Données + Ligne Rouge)
+            </h3>
+            <div class="chart-container">
+                {% if predictions %}
+                <img src="data:image/png;base64,{{ predictions }}" alt="Predictions" style="width: 100%; max-width: 100%;">
+                {% else %}
+                <div class="text-slate-400 text-center py-12">Données non disponibles</div>
+                {% endif %}
+            </div>
+            <div class="mt-6 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div class="text-sm text-slate-300">
+                    <strong class="text-cyan-400">📈 Analyse Complète Données + Prédictions:</strong> 
+                    Section 1 (BLEU) = Données historiques confirmées depuis 2010
+                    Section 2 (ROUGE) = Prédictions IA futures avec intervalles de confiance 95%
+                    Les modèles CNN-LSTM sont entraînés sur 16+ ans de données. Utilisez pour l'alerte précoce et la planification de ressources.
+                </div>
+            </div>
+        </div>
+
+        <!-- Cases by Province (National Level) -->
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <h3 class="text-xl font-black text-white mb-6 flex items-center gap-2">
+                <span class="text-2xl">🎯</span>Cas Prédits par Province (Toutes les Provinces)
+            </h3>
+            <div class="chart-container">
+                {% if provincial %}
+                <img src="data:image/png;base64,{{ provincial }}" alt="Provincial Predictions">
+                {% else %}
+                <div class="text-slate-400 text-center py-12">Données non disponibles</div>
+                {% endif %}
+            </div>
+            <div class="mt-6 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div class="text-sm text-slate-300">
+                    <strong class="text-cyan-400">🤖 Détails des Prévisions:</strong> 
+                    Prédictions d'apprentissage automatique agrégées dans toutes les zones de santé par province. 
+                    Utilisez ceci pour prioriser l'allocation des ressources nationales et les interventions de santé publique.
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Analysis (if province selected) -->
+        {% if province %}
+        <!-- Climate Correlation GRANDE et VISIBLE - Premier graphique secondaire -->
+        {% if climate_impact.pairs_count %}
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <h3 class="text-xl font-black text-white mb-6 flex items-center gap-2">
+                <span class="text-2xl">🔬</span>Matrice de Corrélation Climat-Maladie - Comprendre COMMENT le Climat Affecte la Maladie
+            </h3>
+            <div class="chart-container">
+                {% if climate %}
+                <img src="data:image/png;base64,{{ climate }}" alt="Climate Correlation" style="width: 100%; max-width: 1400px;">
+                {% else %}
+                <div class="text-slate-400 text-center py-12">Données non disponibles</div>
+                {% endif %}
+            </div>
+            <div class="mt-6 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div class="text-sm text-slate-300">
+                    <strong class="text-cyan-400">🧬 Analyse Scientifique Complète:</strong> 
+                    Ce graphique montre comment CHAQUE facteur climatique (température, précipitations, humidité) influence les cas de {{ disease }}.
+                    Plus la barre est longue et rouge, plus le facteur augmente les cas. Utilisez ces insights pour l'alerte précoce.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Zone Distribution - GRANDE et VISIBLE -->
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <h3 class="text-xl font-black text-white mb-6 flex items-center gap-2">
+                <span class="text-2xl">📍</span>Distribution Géographique par Zone de Santé - TOUTES les Zones
+            </h3>
+            <div class="chart-container">
+                {% if zone_dist %}
+                <img src="data:image/png;base64,{{ zone_dist }}" alt="Zone Distribution" style="width: 100%; max-width: 100%;">
+                {% else %}
+                <div class="text-slate-400 text-center py-12">Données non disponibles</div>
+                {% endif %}
+            </div>
+            <div class="mt-6 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div class="text-xs text-slate-300">
+                    <strong class="text-cyan-400">📊 Analyse Spatiale Complète:</strong> 
+                    Affichage complet de TOUTES les zones de santé avec distribution historique des cas. 
+                    Chaque zone montre le nombre total de cas et le pourcentage du fardeau maladie. 
+                    Utile pour identifier les hotspots épidémiologiques et optimiser l'allocation des ressources.
+                </div>
+            </div>
+        </div>
+
+        <!-- Zone Predictions with Historical Data -->
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <h3 class="text-xl font-black text-white mb-6 flex items-center gap-2">
+                <span class="text-2xl">🎯</span>Cas Prédits par Zone de Santé - Données Historiques vs Prédictions
+            </h3>
+            <div class="chart-container">
+                {% if zone_pred %}
+                <img src="data:image/png;base64,{{ zone_pred }}" alt="Zone Predictions" style="width: 100%; max-width: 100%;">
+                {% else %}
+                <div class="text-slate-400 text-center py-12">Données non disponibles</div>
+                {% endif %}
+            </div>
+            <div class="mt-6 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div class="text-sm text-slate-300">
+                    <strong class="text-cyan-400">🤖 Prévisions Détaillées au Niveau des Zones:</strong> 
+                    Graphique comparatif montrant les données historiques (BLEU = moyenne passée) vs prédictions IA (ROUGE = future attendue) pour TOUTES les zones de santé.
+                    Essentielles pour la planification des installations de santé, optimisation de la chaîne d'approvisionnement au niveau du territoire, et allocation des ressources critiques.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Intelligent Recommendations -->
+        {% if recommendations %}
+        <div class="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/30 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <div class="flex items-start gap-4">
+                <div class="text-5xl">{{ recommendations.icon }}</div>
+                <div class="flex-1">
+                    <h3 class="text-2xl font-black text-emerald-300 mb-2">{{ recommendations.title }}</h3>
+                    
+                    {% if recommendations.risk_level %}
+                    <div class="mb-4 text-sm font-bold">
+                        <span class="text-lg">{{ recommendations.risk_level }}</span>
+                        <p class="text-yellow-300 mt-2">⚡ {{ recommendations.risk_action }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="space-y-2">
+                        {% for action in recommendations.actions %}
+                        <div class="flex items-start gap-3 text-sm text-emerald-200/90 bg-slate-700/40 p-3 rounded-lg border border-emerald-500/20">
+                            <div class="flex-shrink-0 font-bold">✓</div>
+                            <div>{{ action }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Province Selector -->
+        {% if not province %}
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <h3 class="text-xl font-black text-white mb-4">📍 Analyse Sub-Nationale par Province</h3>
+            <p class="text-slate-400 text-sm mb-6">Sélectionnez une province pour voir l'analyse épidémiologique détaillée</p>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {% for prov in provinces %}
+                <a href="?disease={{ disease }}&province={{ prov.name }}" 
+                   class="p-3 bg-gradient-to-br from-cyan-600/30 to-blue-600/30 border border-cyan-500/30 rounded-lg hover:border-cyan-400 hover:bg-cyan-600/40 transition text-sm font-bold text-cyan-300 text-center">
+                    {{ prov.name }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <!-- Back to National View -->
+        <div class="text-center mb-8">
+            <a href="?disease={{ disease }}" 
+               class="inline-block px-6 py-3 bg-gradient-to-r from-slate-600 to-slate-700 border border-slate-500 rounded-lg hover:border-slate-400 text-white font-bold text-sm transition">
+                ← Retour à l'Analyse au Niveau National
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- Matplotlib charts are rendered server-side, no JavaScript needed for rendering -->
+{% endblock %}

@@ -318,9 +318,9 @@ class DashboardView(TemplateView):
                     hist = hist.order_by('-month')[:2]
                     hist_rows = "".join([f"<tr><td style='padding:4px; border-bottom:1px solid #eee;'>{h.month.strftime('%b %y')}</td><td style='padding:4px; border-bottom:1px solid #eee;'>{h.disease_name}</td><td style='padding:4px; border-bottom:1px solid #eee;'>{int(h.cases_count)}</td></tr>" for h in hist])
                     
-                    # Récupérer le taux de propagation (doit être positif)
+                    # Récupérer le taux de propagation (peut être négatif = baisse, positif = hausse)
                     propagation_rate = p.influence_factors.get('weekly_spread_rate', 0) if p.influence_factors else 0
-                    propagation_rate = max(0, propagation_rate)  # Éviter les valeurs négatives
+                    # ✅ Garder les vraies valeurs (positives = croissance, négatives = décroissance)
                     
                     # -- ESTHÉTIQUE PREMIUM : Cercles Pulsants & Couleurs Vibrantes --
                     # Rouge: #f43f5e (Rose-Red), Jaune: #fbbf24 (Amber), Bleu: #38bdf8 (Sky)

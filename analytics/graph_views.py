@@ -5,6 +5,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.generic import TemplateView, DetailView
 from django.shortcuts import get_object_or_404
 from .models import Province, Territory, HealthZone, ClinicalData, Prediction
+from .disease_analyzer import DiseaseAnalyzer
 from django.db.models import Sum, Avg, Max, Min, Count, Q, F
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -431,7 +432,7 @@ class ProvinceAnalysisView(TemplateView):
 
 
 class DiseaseDetailView(TemplateView):
-    """Disease-specific detailed analysis"""
+    """Disease-specific detailed analysis with Chart.js"""
     template_name = "analytics/disease_detail.html"
     
     def get_context_data(self, disease_name=None, **kwargs):
@@ -444,11 +445,9 @@ class DiseaseDetailView(TemplateView):
         
         # Get provinces affected by this disease
         if province_name:
-            # Single province analysis
             province = get_object_or_404(Province, name=province_name)
             provinces_affected = Province.objects.filter(pk=province.pk)
         else:
-            # National analysis
             provinces_affected = Province.objects.filter(
                 territories__health_zones__clinicaldata__disease_name=disease_name
             ).distinct()
@@ -456,14 +455,13 @@ class DiseaseDetailView(TemplateView):
         context['provinces'] = provinces_affected
         context['provinces_count'] = provinces_affected.count()
         
-        # Global disease statistics
+        # Global disease statistics (CASES ONLY - no deaths)
         if province_name:
             global_stats = ClinicalData.objects.filter(
                 disease_name=disease_name,
                 health_zone__territory__province__name=province_name
             ).aggregate(
                 total_cases=Sum('cases_count'),
-                total_deaths=Sum('deaths_count'),
                 affected_zones=Count('health_zone', distinct=True)
             )
         else:
@@ -471,40 +469,157 @@ class DiseaseDetailView(TemplateView):
                 disease_name=disease_name
             ).aggregate(
                 total_cases=Sum('cases_count'),
-                total_deaths=Sum('deaths_count'),
                 affected_zones=Count('health_zone', distinct=True)
             )
         
         total_cases = global_stats['total_cases'] or 0
-        total_deaths = global_stats['total_deaths'] or 0
-        fatality_rate = 0
-        if total_cases > 0:
-            fatality_rate = round((total_deaths / total_cases) * 100, 1)
         
         context['global_stats'] = {
             'total_cases': total_cases,
-            'total_deaths': total_deaths,
             'affected_zones': global_stats['affected_zones'] or 0,
-            'fatality_rate': fatality_rate,
         }
         
-        # Generate global timeline
-        context['global_timeline'] = self._generate_global_timeline(disease_name, province_name)
+        # Generate Chart.js JSON data
+        context['timeline_data_json'] = self._get_timeline_data_json(disease_name, province_name)
+        context['province_comparison_json'] = self._get_province_comparison_json(disease_name)
+        context['zones_distribution_json'] = self._get_zones_distribution_json(disease_name, province_name)
+        context['prediction_data_json'] = self._get_prediction_data_json(disease_name, province_name)
         
-        # Generate province comparison
-        context['province_comparison'] = self._generate_province_comparison(disease_name)
-        
-        # PROVINCE-LEVEL ANALYSIS (if province is selected)
+        # Province-level analysis (if selected)
         if province_name:
-            province = get_object_or_404(Province, name=province_name)
+            province_obj = get_object_or_404(Province, name=province_name)
             context['province_analysis'] = {
-                'per_capita_graph': self._generate_per_capita_graph(province, disease_name),
-                'climate_correlation_graph': self._generate_climate_correlation_graph(province, disease_name),
-                'zones_distribution_graph': self._generate_zones_distribution_graph(province, disease_name),
-                'system_effectiveness_graph': self._generate_system_effectiveness_graph(province, disease_name),
+                'territory_breakdown_json': self._get_territory_breakdown_json(province_obj, disease_name),
+                'monthly_trend_json': self._get_monthly_trend_json(province_obj, disease_name)
+            }
+        else:
+            context['province_analysis'] = {
+                'territory_breakdown_json': json.dumps({'labels': [], 'cases': []}),
+                'monthly_trend_json': json.dumps({'labels': [], 'cases': []})
             }
         
         return context
+    
+    def _get_timeline_data_json(self, disease_name, province_name=None):
+        """Timeline data for Chart.js - CASES ONLY"""
+        if province_name:
+            data = ClinicalData.objects.filter(
+                disease_name=disease_name,
+                health_zone__territory__province__name=province_name
+            ).values('month').annotate(
+                cases=Sum('cases_count')
+            ).order_by('month')
+        else:
+            data = ClinicalData.objects.filter(
+                disease_name=disease_name
+            ).values('month').annotate(
+                cases=Sum('cases_count')
+            ).order_by('month')
+        
+        if not data.exists():
+            return json.dumps({'labels': [], 'cases': []})
+        
+        labels = [str(d['month'].strftime('%b %Y')) for d in data]
+        cases = [d['cases'] for d in data]
+        
+        return json.dumps({'labels': labels, 'cases': cases})
+    
+    def _get_province_comparison_json(self, disease_name):
+        """Province comparison - CASES ONLY"""
+        provinces = Province.objects.filter(
+            territories__health_zones__clinicaldata__disease_name=disease_name
+        ).distinct().annotate(
+            total_cases=Sum('territories__health_zones__clinicaldata__cases_count')
+        ).order_by('-total_cases')[:15]
+        
+        names = [p.name for p in provinces]
+        cases = [p.total_cases or 0 for p in provinces]
+        
+        return json.dumps({'labels': names, 'cases': cases})
+    
+    def _get_zones_distribution_json(self, disease_name, province_name=None):
+        """Zones distribution - CASES ONLY"""
+        if province_name:
+            zones = HealthZone.objects.filter(
+                territory__province__name=province_name,
+                clinicaldata__disease_name=disease_name
+            ).distinct().annotate(
+                total_cases=Sum('clinicaldata__cases_count')
+            ).order_by('-total_cases')[:20]
+        else:
+            zones = HealthZone.objects.filter(
+                clinicaldata__disease_name=disease_name
+            ).distinct().annotate(
+                total_cases=Sum('clinicaldata__cases_count')
+            ).order_by('-total_cases')[:20]
+        
+        names = [z.name[:20] for z in zones]
+        cases = [z.total_cases or 0 for z in zones]
+        
+        return json.dumps({'labels': names, 'cases': cases})
+    
+    def _get_territory_breakdown_json(self, province, disease_name):
+        """Territory breakdown within province - CASES ONLY"""
+        territories = Territory.objects.filter(
+            province=province,
+            health_zones__clinicaldata__disease_name=disease_name
+        ).distinct().annotate(
+            total_cases=Sum('health_zones__clinicaldata__cases_count')
+        ).order_by('-total_cases')
+        
+        names = [t.name for t in territories]
+        cases = [t.total_cases or 0 for t in territories]
+        
+        return json.dumps({'labels': names, 'cases': cases})
+    
+    def _get_monthly_trend_json(self, province, disease_name):
+        """Monthly trend for province - CASES ONLY"""
+        data = ClinicalData.objects.filter(
+            disease_name=disease_name,
+            health_zone__territory__province=province
+        ).values('month').annotate(
+            cases=Sum('cases_count')
+        ).order_by('month')
+        
+        labels = [d['month'].strftime('%b %Y') for d in data]
+        cases = [d['cases'] for d in data]
+        
+        return json.dumps({'labels': labels, 'cases': cases})
+    
+    def _get_prediction_data_json(self, disease_name, province_name=None):
+        """Get prediction data for disease - CASES ONLY"""
+        if province_name:
+            predictions = Prediction.objects.filter(
+                disease_name=disease_name,
+                health_zone__territory__province__name=province_name
+            ).order_by('prediction_date')
+        else:
+            predictions = Prediction.objects.filter(
+                disease_name=disease_name
+            ).order_by('prediction_date')
+        
+        if not predictions.exists():
+            return json.dumps({'labels': [], 'predicted': [], 'confidence_upper': [], 'confidence_lower': []})
+        
+        labels = [p.prediction_date.strftime('%b %Y') for p in predictions]
+        predicted = [p.predicted_cases or 0 for p in predictions]
+        
+        # Extract confidence intervals from influence_factors
+        confidence_upper = []
+        confidence_lower = []
+        for p in predictions:
+            factors = p.influence_factors or {}
+            upper = factors.get('confidence_interval_upper', p.predicted_cases or 0)
+            lower = factors.get('confidence_interval_lower', p.predicted_cases or 0)
+            confidence_upper.append(upper)
+            confidence_lower.append(lower)
+        
+        return json.dumps({
+            'labels': labels,
+            'predicted': predicted,
+            'confidence_upper': confidence_upper,
+            'confidence_lower': confidence_lower
+        })
     
     def _generate_global_timeline(self, disease_name, province_name=None):
         """Generate global or provincial timeline for disease"""

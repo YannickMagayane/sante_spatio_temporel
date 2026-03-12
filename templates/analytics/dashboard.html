@@ -93,6 +93,10 @@
                 <a href="{% url 'analytics:disease_detail' %}?disease={{ selected_disease }}"
                     class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] font-black uppercase rounded-xl border border-red-500/20 transition-all">🦠 Analyse Maladie</a>
                 {% endif %}
+                {% if selected_disease != 'all' and selected_province != 'all' %}
+                <a href="{% url 'analytics:disease_interactive' %}?disease={{ selected_disease }}&province={{ selected_province }}"
+                    class="px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-[10px] font-black uppercase rounded-xl border border-cyan-500/20 transition-all">🎯 Analyse Interactive</a>
+                {% endif %}
             </div>
 
             <div class="h-10 w-[1px] bg-white/10 mx-2 hidden md:block"></div>

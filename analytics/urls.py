@@ -4,6 +4,7 @@ from .views import (
     TaskRunListView, launch_training_view, launch_ingest_view, launch_ingest_climate_view, task_status_api
 )
 from .graph_views import ProvinceAnalysisView, DiseaseDetailView
+from .disease_interactive_view import DiseaseInteractiveView
 
 app_name = 'analytics'
 
@@ -24,4 +25,5 @@ urlpatterns = [
     # Analysis and graphs
     path('analysis/province/', ProvinceAnalysisView.as_view(), name='province_analysis'),
     path('analysis/disease/', DiseaseDetailView.as_view(), name='disease_detail'),
+    path('analysis/disease/interactive/', DiseaseInteractiveView.as_view(), name='disease_interactive'),
 ]
