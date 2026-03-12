@@ -69,9 +69,10 @@
 
         <div class="flex items-center gap-6">
             <div class="hidden md:flex gap-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                <a href="#" class="hover:text-brand-400 transition-colors">Dashboard</a>
-                <a href="#" class="hover:text-brand-400 transition-colors">Predictions</a>
-                <a href="#" class="hover:text-brand-400 transition-colors">Reports</a>
+                <a href="{% url 'analytics:dashboard' %}" class="hover:text-brand-400 transition-colors">Dashboard</a>
+                <a href="{% url 'analytics:disease_interactive' %}" class="hover:text-brand-400 transition-colors">Prédictions</a>
+                <a href="{% url 'analytics:province_analysis' %}" class="hover:text-brand-400 transition-colors">Rapports</a>
+                <a href="{% url 'analytics:task_list' %}" class="hover:text-brand-400 transition-colors">Tâches</a>
             </div>
             <div class="h-8 w-px bg-white/10"></div>
             <div class="flex items-center gap-2">

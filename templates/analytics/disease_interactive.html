@@ -54,12 +54,7 @@
                 <div class="text-xs text-red-300/70">Historique complet</div>
             </div>
 
-            <!-- Deaths -->
-            <div class="bg-gradient-to-br from-gray-500/10 to-slate-500/10 border border-gray-500/30 rounded-xl p-6 backdrop-blur">
-                <div class="text-sm font-bold text-gray-300 uppercase mb-2">⚰️ Décès</div>
-                <div class="text-4xl font-black text-gray-300 mb-1">{{ stats.total_deaths|floatformat:0 }}</div>
-                <div class="text-xs text-gray-400">Létalité: {{ stats.fatality_rate }}%</div>
-            </div>
+            
 
             <!-- Affected Zones -->
             <div class="bg-gradient-to-br from-purple-500/10 to-indigo-500/10 border border-purple-500/30 rounded-xl p-6 backdrop-blur">
@@ -75,12 +70,7 @@
                 <div class="text-xs text-cyan-300/70">Moyenne historique</div>
             </div>
 
-            <!-- Fatality Rate -->
-            <div class="bg-gradient-to-br from-amber-500/10 to-yellow-500/10 border border-amber-500/30 rounded-xl p-6 backdrop-blur">
-                <div class="text-sm font-bold text-amber-300 uppercase mb-2">⚠️ Létalité</div>
-                <div class="text-4xl font-black text-amber-400 mb-1">{{ stats.fatality_rate|floatformat:1 }}%</div>
-                <div class="text-xs text-amber-300/70">Taux de mortalité</div>
-            </div>
+            
         </div>
         {% endif %}
 
@@ -108,7 +98,7 @@
             </div>
         </div>
 
-        <!-- National Predictions Chart -->
+        <!-- Predictions Chart - National Level with Data & Trend -->
         <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
             <h3 class="text-xl font-black text-white mb-6 flex items-center gap-2">
                 <span class="text-2xl">🤖</span>Prévisions d'Apprentissage Automatique - Modèles Prédictifs (Données + Ligne Rouge)
@@ -126,6 +116,28 @@
                     Section 1 (BLEU) = Données historiques confirmées depuis 2010
                     Section 2 (ROUGE) = Prédictions IA futures avec intervalles de confiance 95%
                     Les modèles CNN-LSTM sont entraînés sur 16+ ans de données. Utilisez pour l'alerte précoce et la planification de ressources.
+                </div>
+            </div>
+        </div>
+
+        <!-- Annual Trend Chart (All Levels - National & Provincial) -->
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 mb-8 backdrop-blur shadow-xl">
+            <h3 class="text-xl font-black text-white mb-6 flex items-center gap-2">
+                <span class="text-2xl">📅</span>Tendance Annuelle - Données Historiques (Bleu) vs Prédictions (Rouge)
+            </h3>
+            <div class="chart-container">
+                {% if annual %}
+                <img src="data:image/png;base64,{{ annual }}" alt="Annual Trends" style="width: 100%; max-width: 100%;">
+                {% else %}
+                <div class="text-slate-400 text-center py-12">Données non disponibles</div>
+                {% endif %}
+            </div>
+            <div class="mt-6 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <div class="text-sm text-slate-300">
+                    <strong class="text-cyan-400">📊 Analyse Annuelle Simplifiée:</strong> 
+                    Cette vue montre les tendances ANNUELLES (pas mensuelles) pour une vision à long terme. 
+                    Les données historiques en BLEU montrent l'évolution passée, les prédictions en ROUGE montrent l'évolution attendue future.
+                    Utile pour la planification budgétaire et stratégique à long terme.
                 </div>
             </div>
         </div>

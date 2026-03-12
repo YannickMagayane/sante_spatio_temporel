@@ -48,6 +48,15 @@ class DiseaseInteractiveView(TemplateView):
         context['stats'] = None
         context['recommendations'] = self._get_recommendations(disease_name, None)
         
+        # National-level predictions for graphs (works for both national and provincial display)
+        national_pred = DiseaseAnalyzer.get_predictions_comparison(None, disease_name)
+        if national_pred:
+            # Add historical data to predictions
+            if timeline_data:
+                national_pred['historical'] = timeline_data.get('cases', [])
+                national_pred['historical_labels'] = timeline_data.get('labels', [])
+            context['predictions_data'] = json.dumps(national_pred)
+        
         # National-level predictions across all provinces
         national_preds = self._get_national_predictions(disease_name)
         context['provincial_predictions'] = json.dumps(national_preds)
@@ -79,6 +88,10 @@ class DiseaseInteractiveView(TemplateView):
             
             # Get predictions
             predictions = DiseaseAnalyzer.get_predictions_comparison(province_name, disease_name)
+            # Add historical data to predictions for comparison
+            if timeline_data:
+                predictions['historical'] = timeline_data.get('cases', [])
+                predictions['historical_labels'] = timeline_data.get('labels', [])
             context['predictions_data'] = json.dumps(predictions)
             
             # Get intelligent recommendations for this province
@@ -145,9 +158,9 @@ class DiseaseInteractiveView(TemplateView):
         return {'labels': labels, 'predicted': predicted}
     
     def _get_zone_predictions(self, province_name, disease_name):
-        """Get predictions by health zone"""
-        from .models import HealthZone, Prediction, Province
-        from django.db.models import Sum
+        """Get predictions by health zone with historical averages"""
+        from .models import HealthZone, Prediction, Province, ClinicalData
+        from django.db.models import Sum, Avg
         
         province = Province.objects.get(name=province_name)
         zones = HealthZone.objects.filter(
@@ -157,18 +170,27 @@ class DiseaseInteractiveView(TemplateView):
         
         labels = []
         predicted = []
+        historical_avg = []  # Moyenne historique pour chaque zone
         
-        for zone in zones[:10]:  # Top 10 zones
-            preds = Prediction.objects.filter(
+        for zone in zones:
+            # Get prediction
+            pred = Prediction.objects.filter(
                 disease_name=disease_name,
                 health_zone=zone
             ).aggregate(total=Sum('predicted_cases'))
             
-            if preds['total']:
+            # Get historical average
+            hist = ClinicalData.objects.filter(
+                disease_name=disease_name,
+                health_zone=zone
+            ).aggregate(avg_cases=Avg('cases_count'))
+            
+            if pred['total'] or hist['avg_cases']:
                 labels.append(zone.name[:25])
-                predicted.append(preds['total'])
+                predicted.append(pred['total'] or 0)
+                historical_avg.append(hist['avg_cases'] or 0)
         
-        return {'labels': labels, 'predicted': predicted}
+        return {'labels': labels, 'predicted': predicted, 'historical_avg': historical_avg}
     
     def _get_recommendations(self, disease_name, province_name=None, stats=None):
         """Generate intelligent recommendations based on disease data"""
@@ -508,16 +530,36 @@ class DiseaseInteractiveView(TemplateView):
                 predicted = pred_data['predicted']
                 conf_upper = pred_data.get('confidence_upper', predicted)
                 conf_lower = pred_data.get('confidence_lower', predicted)
-                historical = pred_data.get('historical', [])  # Données historiques
+                historical = pred_data.get('historical', [])
+                historical_labels = pred_data.get('historical_labels', [])
                 
                 x_pos = np.arange(len(labels))
+                
+                # Extract years from labels for display
+                hist_years = []
+                if historical_labels:
+                    for label in historical_labels:
+                        try:
+                            year = label.split('-')[0]
+                            hist_years.append(year)
+                        except:
+                            hist_years.append(label)
+                
+                pred_years = []
+                for label in labels:
+                    try:
+                        year = label.split('-')[0]
+                        pred_years.append(year)
+                    except:
+                        pred_years.append(label)
                 
                 # SECTION 1: DONNÉES HISTORIQUES (Bleu clair)
                 if historical:
                     historical_x = np.arange(len(historical))
                     ax.plot(historical_x, historical, color='#60a5fa', linewidth=2.5, marker='o',
                            markersize=4, markerfacecolor='#60a5fa', markeredgecolor='white',
-                           markeredgewidth=1, label='Données Historiques', alpha=0.8, linestyle='-')
+                           markeredgewidth=1, label=f'Données Historiques (Années: {hist_years[0] if hist_years else "?"} - {hist_years[-1] if hist_years else "?"})', 
+                           alpha=0.8, linestyle='-')
                 
                 # SECTION 2: POINT DE SÉPARATION (ligne pointillée grise)
                 separation_point = len(historical) if historical else 0
@@ -535,7 +577,7 @@ class DiseaseInteractiveView(TemplateView):
                 # Main RED prediction line
                 ax.plot(pred_x, predicted, color='#ef4444', linewidth=4, marker='s',
                        markersize=7, markerfacecolor='#fca5a5', markeredgecolor='#ffffff',
-                       markeredgewidth=2, label='Prédiction IA (ROUGE)', zorder=5, linestyle='-')
+                       markeredgewidth=2, zorder=5, linestyle='-')
                 
                 # Add value labels on prediction points (not too many)
                 step = max(1, len(predicted)//8)
@@ -543,26 +585,37 @@ class DiseaseInteractiveView(TemplateView):
                     ax.text(pred_x[i], predicted[i], f'{int(predicted[i]):,}', 
                            ha='center', va='bottom', fontsize=9, color='#fca5a5', fontweight='bold')
                 
-                # Configure x-axis
-                all_labels = (list(range(len(historical))) if historical else []) + list(labels)
-                ax.set_xlabel('Mois (Historique → Prédictions Futures)', fontsize=13, 
+                # Configure x-axis with year indicators
+                ax.set_xlabel('Années: Données Historiques (Bleu) → Prédictions Futures (Rouge)', fontsize=13, 
                              color='#e2e8f0', fontweight='bold')
                 ax.set_ylabel('Nombre de Cas', fontsize=13, color='#e2e8f0', fontweight='bold')
-                ax.set_title('Analyse Complète: Données Historiques vs Prédictions IA (Ligne Rouge) | Intervalles de Confiance 95%', 
+                
+                # Title
+                ax.set_title('Prévisions d\'Apprentissage Automatique - Modèles Prédictifs (Données + Ligne Rouge)', 
                             fontsize=14, color='#e2e8f0', fontweight='bold', pad=20)
                 
-                # Set ticks
+                # Set ticks with year labels
                 total_x = len(historical) + len(predicted) if historical else len(predicted)
-                ax.set_xticks(np.arange(0, total_x, max(1, total_x//15)))
-                if historical:
-                    tick_labels = list(range(len(historical))) + list(labels[::max(1, len(labels)//7)])
-                else:
-                    tick_labels = labels[::max(1, len(labels)//15)]
-                ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=9)
+                tick_positions = np.arange(0, total_x, max(1, total_x//12))
+                ax.set_xticks(tick_positions)
+                
+                # Create year labels for x-axis
+                tick_labels = []
+                for pos in tick_positions:
+                    if pos < len(historical) and historical_labels:
+                        idx = min(int(pos), len(historical_labels)-1)
+                        tick_labels.append(historical_labels[idx].split('-')[0] if historical_labels[idx] else str(int(pos)))
+                    elif pos >= len(historical):
+                        pred_idx = min(int(pos - separation_point), len(labels)-1)
+                        if pred_idx >= 0 and pred_idx < len(labels):
+                            tick_labels.append(labels[pred_idx].split('-')[0])
+                        else:
+                            tick_labels.append('')
+                    else:
+                        tick_labels.append('')
+                ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=10, fontweight='bold')
                 
                 ax.grid(True, alpha=0.25, axis='y', color='#64748b', linestyle='--', linewidth=0.8)
-                ax.legend(loc='upper left', framealpha=0.95, facecolor='#1e293b', 
-                         edgecolor='#ef4444', fontsize=11, ncol=2)
                 
                 # Styling
                 ax.spines['top'].set_visible(False)
@@ -712,6 +765,123 @@ class DiseaseInteractiveView(TemplateView):
                 plt.close()
         except Exception as e:
             print(f"Climate correlation chart error: {e}")
+        
+        try:
+            # 7️⃣ ANNUAL DATA & PREDICTIONS CHART - Données Annuelles avec Prédictions
+            # Works for both national and provincial level
+            if timeline_data and 'labels' in timeline_data and 'cases' in timeline_data and timeline_data['labels'] and timeline_data['cases']:
+                fig, ax = plt.subplots(figsize=(16, 7), facecolor='#0f172a', edgecolor='none')
+                ax.set_facecolor('#1e293b')
+                
+                # Extract annual data from monthly data
+                timeline_labels = timeline_data['labels']
+                timeline_cases = timeline_data['cases']
+                
+                # Group monthly data by year
+                annual_data = {}
+                for label, cases_val in zip(timeline_labels, timeline_cases):
+                    try:
+                        year = int(label.split('-')[0])
+                        if year not in annual_data:
+                            annual_data[year] = []
+                        annual_data[year].append(cases_val)
+                    except:
+                        pass
+                
+                # Calculate annual totals
+                annual_years = sorted(annual_data.keys())
+                annual_cases = [sum(annual_data[year]) for year in annual_years]
+                
+                # Extract annual predictions only if available
+                pred_years = []
+                pred_cases = []
+                if pred_data and pred_data.get('labels') and pred_data.get('predicted'):
+                    pred_labels = pred_data['labels']
+                    pred_predicted = pred_data['predicted']
+                    
+                    # Group predictions by year
+                    annual_pred_data = {}
+                    for label, pred_val in zip(pred_labels, pred_predicted):
+                        try:
+                            year = int(label.split('-')[0])
+                            if year not in annual_pred_data:
+                                annual_pred_data[year] = []
+                            annual_pred_data[year].append(pred_val)
+                        except:
+                            pass
+                    
+                    pred_years = sorted(annual_pred_data.keys())
+                    pred_cases = [sum(annual_pred_data[year]) for year in pred_years]
+                
+                # Plot annual historical data as blue line
+                if annual_years and annual_cases:
+                    ax.plot(annual_years, annual_cases, color='#60a5fa', linewidth=3.5, marker='o',
+                           markersize=8, markerfacecolor='#60a5fa', markeredgecolor='white',
+                           markeredgewidth=2, label='Données Annuelles Historiques', alpha=0.9, linestyle='-')
+                    
+                    # Add value labels
+                    for year, cases in zip(annual_years, annual_cases):
+                        ax.text(year, cases, f'{int(cases):,}', 
+                               ha='center', va='bottom', fontsize=9, color='#60a5fa', fontweight='bold')
+                
+                # Plot annual predictions as red line if available
+                if pred_years and pred_cases:
+                    ax.plot(pred_years, pred_cases, color='#ef4444', linewidth=3.5, marker='s',
+                           markersize=8, markerfacecolor='#fca5a5', markeredgecolor='#ffffff',
+                           markeredgewidth=2, label='Prédictions Annuelles (IA)', alpha=0.95, linestyle='-')
+                    
+                    # Add connection point if applicable
+                    if annual_years and pred_years and annual_years[-1] < pred_years[0]:
+                        ax.plot([annual_years[-1], pred_years[0]], 
+                               [annual_cases[-1], pred_cases[0]], 
+                               color='#64748b', linestyle='--', linewidth=2, alpha=0.5)
+                    
+                    # Add value labels for predictions
+                    for year, cases in zip(pred_years, pred_cases):
+                        ax.text(year, cases, f'{int(cases):,}', 
+                               ha='center', va='bottom', fontsize=9, color='#ef4444', fontweight='bold')
+                
+                loc_name = province_name if province_name else "Niveau National"
+                ax.set_xlabel('Année', fontsize=13, color='#e2e8f0', fontweight='bold')
+                ax.set_ylabel('Nombre Total de Cas par An', fontsize=13, color='#e2e8f0', fontweight='bold')
+                ax.set_title(f'Tendance Annuelle: Données Historiques (Bleu) vs Prédictions (Rouge) | {disease_name} - {loc_name}', 
+                            fontsize=15, color='#e2e8f0', fontweight='bold', pad=20)
+                
+                # Set x-axis to show all years
+                all_years = sorted(set(annual_years + pred_years))
+                if all_years:
+                    ax.set_xticks(all_years[::max(1, len(all_years)//10)])
+                    ax.set_xticklabels(all_years[::max(1, len(all_years)//10)], rotation=45, fontsize=10)
+                
+                ax.grid(True, alpha=0.25, axis='y', color='#64748b', linestyle='--', linewidth=0.8)
+                
+                # Add legend with both historical and predictions
+                ax.legend(loc='upper left', framealpha=0.95, facecolor='#1e293b', edgecolor='#64748b', fontsize=12)
+                
+                # Styling
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_color('#64748b')
+                ax.spines['bottom'].set_color('#64748b')
+                ax.tick_params(colors='#cbd5e1', labelsize=11)
+                
+                # Add stats annotation
+                if annual_cases:
+                    max_annual = max(annual_cases)
+                    stats_ann = f'Max Historique: {int(max_annual):,} | Années: {annual_years[0] if annual_years else "N/A"}-{annual_years[-1] if annual_years else "N/A"}'
+                    ax.text(0.98, 0.05, stats_ann, 
+                           transform=ax.transAxes, fontsize=10, color='#60a5fa',
+                           verticalalignment='bottom', horizontalalignment='right',
+                           bbox=dict(boxstyle='round', facecolor='#1e293b', alpha=0.9, edgecolor='#60a5fa', linewidth=2))
+                
+                plt.tight_layout()
+                img_buffer = io.BytesIO()
+                plt.savefig(img_buffer, format='png', facecolor='#0f172a', dpi=100, bbox_inches='tight')
+                img_buffer.seek(0)
+                charts['annual'] = base64.b64encode(img_buffer.getvalue()).decode()
+                plt.close()
+        except Exception as e:
+            print(f"Annual chart error: {e}")
         
         return charts
         """Generate intelligent recommendations based on disease data"""
