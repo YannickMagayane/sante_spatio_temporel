@@ -222,15 +222,15 @@ class SmartRecommender:
         - Données cliniques historiques
         - Géographie réelle
         """
-        if not health_zone.territory:
+        if not health_zone or not health_zone.territory:
             return "📍 Zone sanitaire non identifiée"
         
         territory = health_zone.territory
-        province = territory.province
-        prov_name = province.name if province else "Unknown"
+        province = territory.province if territory else None
+        prov_name = province.name if province else "Région inconnue"
         
         # === Récupérer DONNÉES RÉELLES ===
-        pop = territory.population or 0
+        pop = int(territory.population) if territory.population else 0
         
         # Climat réel
         climate_data = ClimateData.objects.filter(
@@ -265,15 +265,15 @@ class SmartRecommender:
         context_type = cls._detect_regional_context(health_zone)
         
         if context_type == 'urban_kinshasa':
-            temp = climate_data.get('avg_temp', 25)
-            humidity = climate_data.get('avg_humidity', 70)
+            temp = float(climate_data.get('avg_temp') or 25)
+            humidity = float(climate_data.get('avg_humidity') or 70)
             msg = f"🏙️ KINSHASA URBAIN DENSE | {pop:,.0f} hab | "
             msg += f"T°={temp:.1f}°C, Humidité={humidity:.0f}% → "
             msg += f"transmission aéroportée/hydrique ACCÉLÉRÉE"
             return msg
         
         elif context_type == 'conflict_kivu':
-            avg_mal = malnutr.get('avg_cases') or 0
+            avg_mal = float(malnutr.get('avg_cases') or 0)
             msg = f"⛺ CONTEXTE CONFLIT (Kivu) | {prov_name} | "
             msg += f"Malnutrition coexistante: {avg_mal:.0f} cas/mois → "
             msg += f"Comorbidité + Hygiène précaire"
@@ -286,7 +286,7 @@ class SmartRecommender:
             return msg
         
         elif context_type == 'forest_region':
-            temp = climate_data.get('avg_temp', 23)
+            temp = float(climate_data.get('avg_temp') or 23)
             msg = f"🌳 CONTEXTE FORESTIER ({prov_name}) | T°={temp:.1f}°C | "
             msg += f"Contact animal-humain + Réservoir naturel → "
             msg += f"Risque zoonoses et émergence"

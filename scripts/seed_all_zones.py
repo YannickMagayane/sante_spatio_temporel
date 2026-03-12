@@ -1,13 +1,19 @@
 import os
+import sys
 import django
 import geopandas as gpd
 import logging
 import random
 
+# Add the app directory to path so Django can find core module
+app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if app_dir not in sys.path:
+    sys.path.insert(0, app_dir)
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 
-from analytics.models import HealthZone
+from analytics.models import HealthZone, Territory, Province
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -20,8 +26,11 @@ VILLES_MAJEURES = [
 ]
 
 def seed(extracted_dir="data/extracted_hdx"):
+    # Clear all data
     HealthZone.objects.all().delete()
-    logger.info("🗑️ Base de données vidée (Zones de Santé).")
+    Territory.objects.all().delete()
+    Province.objects.all().delete()
+    logger.info("🗑️ Base de données vidée (Provinces, Territoires, Zones de Santé).")
 
     # 1. ADM1 - 26 PROVINCES
     adm1_path = os.path.join(extracted_dir, "cod_admin1.geojson")
@@ -29,38 +38,34 @@ def seed(extracted_dir="data/extracted_hdx"):
         gdf1 = gpd.read_file(adm1_path)
         logger.info(f"📍 Injection de {len(gdf1)} Provinces (ADM1)...")
         for _, row in gdf1.iterrows():
-            HealthZone.objects.update_or_create(
+            Province.objects.update_or_create(
                 code=row['adm1_pcode'],
                 defaults={
                     "name": row['adm1_name'],
-                    "province": row['adm1_name'],
-                    "latitude": float(row['center_lat']) if row['center_lat'] else None,
-                    "longitude": float(row['center_lon']) if row['center_lon'] else None,
-                    "geometry": {"level": "1", "type": "Province"}
                 }
             )
 
-    # 2. ADM2 - 149 TERRITOIRES & VILLES
+    # 2. ADM2 - TERRITOIRES & VILLES
     adm2_path = os.path.join(extracted_dir, "cod_admin2.geojson")
     if os.path.exists(adm2_path):
         gdf2 = gpd.read_file(adm2_path)
-        # On limite aux 149 entités demandées ou on traite toutes en distinguant
-        logger.info(f"📍 Analyse de {len(gdf2)} Entités ADM2...")
+        logger.info(f"📍 Injection de {len(gdf2)} Territoires/Villes (ADM2)...")
         count_t = 0
         count_v = 0
         for _, row in gdf2.iterrows():
+            province = Province.objects.get(code=row['adm1_pcode'])
             name = row['adm2_name']
             is_ville = any(v in name for v in VILLES_MAJEURES)
-            type_label = "Ville" if is_ville else "Territoire"
             
-            HealthZone.objects.update_or_create(
+            Territory.objects.update_or_create(
                 code=row['adm2_pcode'],
                 defaults={
                     "name": name,
-                    "province": row['adm1_name'],
+                    "province": province,
                     "latitude": float(row['center_lat']) if row['center_lat'] else None,
                     "longitude": float(row['center_lon']) if row['center_lon'] else None,
-                    "geometry": {"level": "2", "type": type_label, "parent": row['adm1_pcode']}
+                    "geometry": {"level": "2", "type": "Ville" if is_ville else "Territoire"},
+                    "population": int(row.get('population', 0)) if row.get('population') else 0
                 }
             )
             if is_ville: count_v += 1
@@ -73,23 +78,33 @@ def seed(extracted_dir="data/extracted_hdx"):
         gdf3 = gpd.read_file(adm3_path)
         logger.info(f"📍 Injection de {len(gdf3)} Zones de Santé (ADM3)...")
         for _, row in gdf3.iterrows():
+            # Get or create territory - handle case where it might not exist
+            territory, _ = Territory.objects.get_or_create(
+                code=row['adm2_pcode'],
+                defaults={
+                    'name': row['adm2_name'],
+                    'province': Province.objects.filter(code=row['adm1_pcode']).first() or Province.objects.first(),
+                    'latitude': float(row['center_lat']) if row['center_lat'] else None,
+                    'longitude': float(row['center_lon']) if row['center_lon'] else None,
+                }
+            )
+            
             # Métadonnées démographiques pour le dashboard
             demographics = {
                 "level": "3",
                 "type": "Zone de Santé",
-                "parent": row['adm2_pcode'],
                 "age_under_15": random.randint(45, 52), # Courbe démographique RDC
-                "rural_percentage": random.randint(60, 98) if row['adm1_name'] != 'Kinshasa' else random.randint(2, 15)
+                "rural_percentage": random.randint(60, 98) if territory.province.name != 'Kinshasa' else random.randint(2, 15)
             }
             HealthZone.objects.update_or_create(
                 code=row['adm3_pcode'],
                 defaults={
                     "name": row['adm3_name'],
-                    "province": row['adm1_name'],
+                    "territory": territory,
                     "latitude": float(row['center_lat']) if row['center_lat'] else None,
                     "longitude": float(row['center_lon']) if row['center_lon'] else None,
                     "geometry": demographics,
-                    "population": random.randint(80000, 250000)
+                    "population": int(row.get('population', 0)) if row.get('population') else 0
                 }
             )
 

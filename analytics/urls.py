@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import DashboardView, api_stats, api_predictions, api_alerts
+from .graph_views import ProvinceAnalysisView, DiseaseDetailView
 
 app_name = 'analytics'
 
@@ -9,4 +10,7 @@ urlpatterns = [
     path('api/stats.json', api_stats, name='api_stats'),
     path('api/predictions.json', api_predictions, name='api_predictions'),
     path('api/alerts.json', api_alerts, name='api_alerts'),
+    # Analysis and graphs
+    path('analysis/province/', ProvinceAnalysisView.as_view(), name='province_analysis'),
+    path('analysis/disease/', DiseaseDetailView.as_view(), name='disease_detail'),
 ]

@@ -1,0 +1,240 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ province.name }} - Analyse Détaillée{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-slate-900 to-blue-900 text-white py-8 px-6">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-4xl font-black mb-2">🏥 {{ province.name }}</h1>
+            <p class="text-blue-100">Analyse détaillée des épidémies et des données sanitaires</p>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Diseases Overview -->
+        {% if data_dashboard.diseases %}
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">🦠 Maladies Présentes ({{ total_diseases }})</h2>
+            <p class="text-sm text-slate-600 mb-4">
+                <strong>Note :</strong> Les graphiques détaillés sont générés pour les {{ displayed_diseases }} maladies les plus présentes. 
+                Un total de {{ total_diseases }} maladies différentes sont enregistrées dans cette province.
+            </p>
+            <div class="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-4 mb-4">
+                <p class="text-sm text-amber-800">
+                    <strong>💡 Info Données :</strong> La couverture de données complète est de {{ data_dashboard.completeness_percent }}%. 
+                    Les lacunes de données peuvent affecter la fiabilité des analyses. 
+                    Voir le dashboard "Complétude des Données" ci-dessous pour plus de détails.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Data Completeness Dashboard -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">📊 Dashboard de Complétude des Données</h2>
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+                <div class="bg-blue-50 rounded-lg p-4">
+                    <div class="text-3xl font-bold text-blue-600">{{ data_dashboard.zones }}</div>
+                    <div class="text-sm text-slate-600">Zones de santé</div>
+                </div>
+                <div class="bg-green-50 rounded-lg p-4">
+                    <div class="text-3xl font-bold text-green-600">{{ data_dashboard.diseases }}</div>
+                    <div class="text-sm text-slate-600">Maladies</div>
+                </div>
+                <div class="bg-purple-50 rounded-lg p-4">
+                    <div class="text-3xl font-bold text-purple-600">{{ data_dashboard.months_span }}</div>
+                    <div class="text-sm text-slate-600">Mois de couverture</div>
+                </div>
+                <div class="bg-amber-50 rounded-lg p-4">
+                    <div class="text-3xl font-bold text-amber-600">{{ data_dashboard.total_records }}</div>
+                    <div class="text-sm text-slate-600">Fichiers de données</div>
+                </div>
+                <div class="bg-rose-50 rounded-lg p-4">
+                    <div class="text-3xl font-bold {% if data_dashboard.completeness_percent > 70 %}text-green-600{% elif data_dashboard.completeness_percent > 40 %}text-amber-600{% else %}text-rose-600{% endif %}">
+                        {{ data_dashboard.completeness_percent }}%
+                    </div>
+                    <div class="text-sm text-slate-600">Complétude</div>
+                </div>
+                <div class="bg-slate-50 rounded-lg p-4">
+                    <div class="text-sm font-bold text-slate-700">{{ data_dashboard.data_start }} à {{ data_dashboard.data_end }}</div>
+                    <div class="text-xs text-slate-600">Période couverte</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Correlation Analysis -->
+        {% if correlation_graph %}
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">🔗 Analyse de Corrélation entre Maladies</h2>
+            <img src="{{ correlation_graph }}" alt="Corrélation" class="w-full rounded-lg">
+            <p class="text-sm text-slate-600 mt-4">
+                <strong>Interprétation :</strong> Les valeurs proches de +1 (vert) indiquent une forte corrélation positive 
+                (les maladies surviennent ensemble). Les valeurs proches de -1 (rouge) indiquent une anticorrélation. 
+                Les valeurs proches de 0 (jaune) indiquent l'indépendance.
+            </p>
+        </div>
+        {% endif %}
+
+        <!-- Prediction vs Actual -->
+        {% if prediction_graph %}
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">📈 Prédictions vs Données Historiques</h2>
+            <img src="{{ prediction_graph }}" alt="Prédictions" class="w-full rounded-lg">
+            <p class="text-sm text-slate-600 mt-4">
+                <strong>Bleu :</strong> Données historiques observées. <strong>Rouge :</strong> Prédictions du modèle AI.
+                Les écarts importants indiquent que le modèle ajuste les tendances futures.
+            </p>
+        </div>
+        {% endif %}
+
+        <!-- Zones Heatmap -->
+        {% if zones_heatmap %}
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">🗺️ Carte thermique - Intensité par Zone</h2>
+            <img src="{{ zones_heatmap }}" alt="Heatmap" class="w-full rounded-lg">
+            <p class="text-sm text-slate-600 mt-4">
+                <strong>Interprétation :</strong> Les zones en rouge foncé indiquent une charge morbide plus élevée. 
+                Les zones en jaune clair indiquent une activité plus faible.
+            </p>
+        </div>
+        {% endif %}
+
+        <!-- Disease-Specific Analysis -->
+        {% for disease, disease_graphs in graphs.items %}
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8 border-l-4 border-red-500">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-slate-900">🦠 {{ disease }}</h2>
+                <div class="flex gap-2">
+                    {% if disease_graphs.stats.total_cases %}
+                    <span class="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-bold">
+                        {{ disease_graphs.stats.total_cases }} cas
+                    </span>
+                    {% endif %}
+                    {% if disease_graphs.stats.fatality_rate %}
+                    <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-bold">
+                        Létalité: {{ disease_graphs.stats.fatality_rate }}%
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                <div class="bg-slate-50 rounded-lg p-3">
+                    <div class="text-sm text-slate-600">Cas total</div>
+                    <div class="text-2xl font-bold text-red-600">{{ disease_graphs.stats.total_cases }}</div>
+                </div>
+                <div class="bg-slate-50 rounded-lg p-3">
+                    <div class="text-sm text-slate-600">Décès</div>
+                    <div class="text-2xl font-bold text-gray-800">{{ disease_graphs.stats.total_deaths }}</div>
+                </div>
+                <div class="bg-slate-50 rounded-lg p-3">
+                    <div class="text-sm text-slate-600">Moyenne/mois</div>
+                    <div class="text-2xl font-bold text-blue-600">{{ disease_graphs.stats.avg_cases }}</div>
+                </div>
+                <div class="bg-slate-50 rounded-lg p-3">
+                    <div class="text-sm text-slate-600">Peak</div>
+                    <div class="text-2xl font-bold text-amber-600">{{ disease_graphs.stats.max_cases }}</div>
+                </div>
+                <div class="bg-slate-50 rounded-lg p-3">
+                    <div class="text-sm text-slate-600">Points</div>
+                    <div class="text-2xl font-bold text-purple-600">{{ disease_graphs.stats.data_points }}</div>
+                </div>
+            </div>
+
+            <!-- Time Series -->
+            {% if disease_graphs.timeseries %}
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-slate-800 mb-3">📅 Évolution Temporelle</h3>
+                <img src="{{ disease_graphs.timeseries }}" alt="{{ disease }} timeline" class="w-full rounded-lg">
+                <p class="text-sm text-slate-600 mt-2">
+                    Montre la tendance mensuelle du {{ disease }}. Les pics identifient les périodes d'épidémie.
+                </p>
+            </div>
+            {% endif %}
+
+            <!-- Baseline Analysis -->
+            {% if disease_graphs.baseline %}
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-slate-800 mb-3">📊 Analyse Baseline</h3>
+                <img src="{{ disease_graphs.baseline }}" alt="{{ disease }} baseline" class="w-full rounded-lg">
+                <p class="text-sm text-slate-600 mt-2">
+                    <strong>Ligne jaune pointillée :</strong> Baseline (moyenne historique). 
+                    <strong>Zone jaune :</strong> Bande de confiance (±1 écart-type). 
+                    Les cas dépassant cette bande peuvent signifier une épidémie.
+                </p>
+            </div>
+            {% endif %}
+
+            <!-- Data Quality -->
+            {% if disease_graphs.quality %}
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-slate-800 mb-3">✅ Qualité des Données</h3>
+                <img src="{{ disease_graphs.quality }}" alt="{{ disease }} quality" class="w-full rounded-lg">
+                <p class="text-sm text-slate-600 mt-2">
+                    <strong>Rouge :</strong> < 50% de couverture (données sparse).
+                    <strong>Jaune :</strong> 50-80% de couverture (OK).
+                    <strong>Vert :</strong> > 80% de couverture (excellent).
+                </p>
+            </div>
+            {% endif %}
+
+            <!-- Affected Zones -->
+            {% if disease_graphs.zones_affected %}
+            <div>
+                <h3 class="text-lg font-bold text-slate-800 mb-3">🗺️ Zones Affectées (Top 10)</h3>
+                <div class="bg-slate-50 rounded-lg p-4">
+                    <ul class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {% for zone in disease_graphs.zones_affected %}
+                        <li class="flex items-center">
+                            <span class="inline-block w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                            <span class="text-sm text-slate-700">{{ zone }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <!-- Missing Data Summary -->
+        {% if data_dashboard.completeness_percent < 80 %}
+        <div class="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-6 mb-8">
+            <h3 class="text-lg font-bold text-amber-900 mb-2">⚠️ Alerte: Données Incomplètes</h3>
+            <p class="text-amber-800">
+                La couverture de données est de {{ data_dashboard.completeness_percent }}%. 
+                Cela peut affecter la fiabilité des modèles de prédiction. 
+                Il est recommandé de:
+            </p>
+            <ul class="list-disc list-inside text-amber-800 mt-2 space-y-1">
+                <li>Vérifier les sources de données pour les lacunes</li>
+                <li>Investiguer les zones avec < 50% de couverture</li>
+                <li>Considérer les données comme "semi-fiables" pour les décisions</li>
+                <li>Prioriser la collection de données pour les zones manquantes</li>
+            </ul>
+        </div>
+        {% endif %}
+
+        <!-- Navigation -->
+        <div class="flex gap-4 justify-center mb-8">
+            <a href="{% url 'analytics:dashboard' %}" class="px-6 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition">
+                ← Retour au Dashboard
+            </a>
+            <a href="{% url 'analytics:dashboard' %}?province={{ province.name }}" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                Voir sur la Carte
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    img {
+        max-width: 100%;
+        height: auto;
+    }
+</style>
+{% endblock %}

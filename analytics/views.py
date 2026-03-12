@@ -192,29 +192,81 @@ class DashboardView(TemplateView):
                     gradient={0.2: 'gray', 0.5: 'blue', 1.0: 'blue'}
                 ).add_to(m)
         else:
-            # --- DISEASE PROPAGATION HEATMAP ---
-            # Normalized intensity
+            # --- DISEASE PROPAGATION HEATMAP WITH CLIMATE INFLUENCE ---
+            # Normalized intensity basée sur cases + impact climatique
             disease_heat_data = []
             valid_cases = [p.predicted_cases for p in preds_qs if p.predicted_cases > 0]
             max_cases = max(valid_cases) if valid_cases else 1.0
             
+            # Charger données climatiques pour impact
+            climate_by_province = {}
+            try:
+                climate_provinces = verify_climate_data() if use_climate and climate_data else None
+                if climate_provinces:
+                    for prov_name, climate_df in climate_provinces.items():
+                        if not climate_df.empty:
+                            latest = climate_df.iloc[-1]
+                            climate_by_province[prov_name] = {
+                                'temp': latest.get('temperature', 25),
+                                'precip': latest.get('precipitation', 100),
+                                'humidity': latest.get('relative_humidity', 60)
+                            }
+            except:
+                pass
+            
             for p in preds_qs.iterator():
                 lat, lon = p.health_zone.latitude, p.health_zone.longitude
                 if lat and lon and p.predicted_cases > 0:
-                    # Logarithmic scaling for better visualization of both small and large outbreaks
                     import math
+                    
+                    # Calcul de l'intensité basée sur cases
                     intensity = math.log1p(p.predicted_cases) / math.log1p(max_cases)
-                    disease_heat_data.append([lat, lon, intensity])
+                    
+                    # Ajustement climatique
+                    climate_boost = 1.0
+                    prov_name = p.health_zone.territory.province.name
+                    if prov_name in climate_by_province:
+                        clim = climate_by_province[prov_name]
+                        # Boost si conditions favorables (T° 20-28°C + humidité >60% = vecteurs actifs)
+                        if 20 <= clim['temp'] <= 28 and clim['humidity'] > 60:
+                            climate_boost = 1.3  # +30% pour vecteurs actifs
+                        elif 15 <= clim['temp'] <= 32:  # Gamme moins idéale mais acceptable
+                            climate_boost = 1.1
+                    
+                    # Appliquer boost climatique
+                    final_intensity = min(1.0, intensity * climate_boost)
+                    
+                    disease_heat_data.append([lat, lon, final_intensity])
             
             if disease_heat_data:
                 HeatMap(
                     disease_heat_data,
-                    name=f"Vecteur {selected_disease}",
+                    name=f"Vecteur {selected_disease} (Climat intégré)",
                     radius=35,
                     blur=25,
                     min_opacity=0.5,
-                    gradient={0.2: '#0ea5e9', 0.4: '#fbbf24', 0.7: '#ef4444', 1.0: '#7f1d1d'} # Professional thermal scale
+                    gradient={0.2: '#0ea5e9', 0.4: '#fbbf24', 0.7: '#ef4444', 1.0: '#7f1d1d'} # Thermal scale
                 ).add_to(m)
+                
+                # Ajouter légende expliquant l'impact climatique
+                legend_html = '''
+                <div style="position: fixed; 
+                     bottom: 50px; left: 50px; width: 280px; background-color: white; 
+                     border:2px solid grey; z-index:9999; font-size:11px; padding:10px; border-radius:5px">
+                    <p style="margin:0 0 8px 0; font-weight:bold; color:#1e293b;">🌡️ Impact Climatique</p>
+                    <div style="line-height:1.6;">
+                        <span style="color:#0ea5e9; font-weight:bold;">■</span> Risque faible (T°<15°C ou >32°C)<br>
+                        <span style="color:#fbbf24; font-weight:bold;">■</span> Risque modéré (15-20°C ou 28-32°C)<br>
+                        <span style="color:#ef4444; font-weight:bold;">■</span> <b>Risque ÉLEVÉ</b> (20-28°C + Humidité >60%)<br>
+                        <span style="color:#7f1d1d; font-weight:bold;">■</span> Risque critique (Conditions optimales)
+                    </div>
+                    <p style="margin:8px 0 0 0; font-size:9px; color:#64748b; font-style:italic;">
+                    Les vecteurs (moustiques, etc.) sont plus actifs à 20-28°C avec humidité élevée.
+                    </p>
+                </div>
+                '''
+                m.get_root().html.add_child(folium.Element(legend_html))
+
 
         # 4.1 ADD KINSHASA CAPITAL MARKER (Home Icon)
         # Coordinates for Kinshasa center
@@ -467,71 +519,219 @@ class DashboardView(TemplateView):
         context['system_anomalies'] = list(dict.fromkeys(system_anomalies))
         context['target_disease'] = target_disease
 
-        # --- PREPARATION DES DONNÉES POUR CHART.JS (Filtres respectés) ---
-        # 1. Pression Virale (Graphique Dynamique)
+        # --- PREPARATION DES DONNÉES POUR CHART.JS (À partir du dernier entraînement) ---
+        # Les données viennent directement de la table Prediction (remplie par le script d'entraînement)
+        
+        # 1. GRAPHIQUE 1 : Pression Virale RÉCENTE — TOP 10 ZONES LES PLUS AFFECTÉES
         if selected_disease != 'all':
-            # Focus Maladie: Top 10 ZDS
+            # Focus Maladie: Top 10 ZDS avec prédictions du modèle
             zds_qs = preds_qs.filter(disease_name=selected_disease).order_by('-predicted_cases')[:10]
-            labels = [p.health_zone.name for p in zds_qs]
+            labels = [f"{p.health_zone.name}" for p in zds_qs]
             cases = [float(p.predicted_cases) for p in zds_qs]
+            # Ajouter le modèle utilisé au label
+            models = [f"({(p.influence_factors or {}).get('model_used', 'IA')})" for p in zds_qs]
+            labels = [f"{l} {m}" for l, m in zip(labels, models)]
             context['chart_disease_labels'] = json.dumps(labels)
             context['chart_disease_values'] = json.dumps(cases)
-            context['chart1_title'] = f"Top ZDS - {selected_disease}"
+            context['chart1_title'] = f"🎯 Top 10 Zones à Risque - {selected_disease}"
             context['chart1_type'] = "bar"
         else:
-            # Global: Répartition par maladie
+            # Global: Répartition par maladie avec prédictions
             disease_labels = [s['disease_name'] for s in context['stats']]
             disease_cases = [float(s['cases']) for s in context['stats']]
             context['chart_disease_labels'] = json.dumps(disease_labels)
             context['chart_disease_values'] = json.dumps(disease_cases)
-            context['chart1_title'] = "Répartition des Menaces"
+            context['chart1_title'] = "📊 Répartition des Maladies"
             context['chart1_type'] = "doughnut"
 
-        # 2. Performance des Modèles (Radar) - Basé sur la province
-        model_reliability = {}
-        reliability_qs = Prediction.objects.all()
-        if selected_province != 'all':
-            reliability_qs = reliability_qs.filter(health_zone__territory__province__name=selected_province)
-
-        for p in reliability_qs.iterator():
-            m_name = (p.influence_factors or {}).get('model_used', 'IA-Core')
-            rel = (p.influence_factors or {}).get('reliability', 85)
-            if m_name not in model_reliability: model_reliability[m_name] = []
-            model_reliability[m_name].append(float(rel))
+        # 2. GRAPHIQUE 2 : Métriques de Performance du Dernier Entraînement
+        # ⭐ EXTRACTION DIRECTE : R², Fiabilité, MAE des modèles
+        from collections import defaultdict
+        model_metrics = defaultdict(lambda: {'r2': [], 'reliability': [], 'mae': [], 'tier': []})
         
-        m_labels = list(model_reliability.keys()) if model_reliability else ["LSTM", "CNN", "ConvLSTM"]
-        m_vals = [round(sum(v)/len(v), 1) for v in model_reliability.values()] if model_reliability else [85, 82, 88]
+        training_qs = Prediction.objects.all().select_related('health_zone')
+        if selected_province != 'all':
+            training_qs = training_qs.filter(health_zone__territory__province__name=selected_province)
+        if selected_disease != 'all':
+            training_qs = training_qs.filter(disease_name=selected_disease)
+        
+        # Extraire les scores du dernier entraînement
+        for p in training_qs.iterator():
+            inf = p.influence_factors or {}
+            model_name = inf.get('model_used', 'Unknown')
+            r2 = float(inf.get('r2', 0))
+            reliability = float(inf.get('reliability', 50))
+            mae = float(inf.get('mae', 0))
+            tier = int(inf.get('tier', 4))
+            
+            model_metrics[model_name]['r2'].append(r2)
+            model_metrics[model_name]['reliability'].append(reliability)
+            model_metrics[model_name]['mae'].append(mae)
+            model_metrics[model_name]['tier'].append(tier)
+        
+        # Calculer les moyennes par modèle
+        m_labels = []
+        m_reliability = []
+        m_r2 = []
+        
+        model_order = ['ConvLSTM2D', 'CNN-LSTM', 'Bi-LSTM', 'Persistence']
+        for model_name in model_order:
+            if model_name in model_metrics and model_metrics[model_name]['r2']:
+                m_labels.append(model_name)
+                avg_reliability = round(sum(model_metrics[model_name]['reliability']) / len(model_metrics[model_name]['reliability']), 1)
+                avg_r2 = round(sum(model_metrics[model_name]['r2']) / len(model_metrics[model_name]['r2']), 3)
+                m_reliability.append(float(avg_reliability))
+                m_r2.append(float(avg_r2))
+        
+        # Fallback si aucun modèle
+        if not m_labels:
+            m_labels = ['Entraînement en cours...']
+            m_reliability = [0]
+            m_r2 = [0]
+        
         context['chart_model_labels'] = json.dumps(m_labels)
-        context['chart_model_values'] = json.dumps(m_vals)
+        context['chart_model_values'] = json.dumps(m_reliability)
+        context['chart_model_r2'] = json.dumps(m_r2)
+        context['chart_model_title'] = "🎯 Scores du Dernier Entraînement (R² & Fiabilité %)"
 
-        # 3. Évolution Temporelle (Line Chart) - DONNÉES RÉELLES filtrées
-        temporal_qs = ClinicalData.objects.all()
+        # 3. GRAPHIQUE 3 : Évolution Temporelle — HISTORIQUE + PRÉDICTIONS RÉCENTES
+        from datetime import datetime
+        min_date = datetime(2014, 1, 1)
+        
+        temporal_qs = ClinicalData.objects.filter(month__gte=min_date)
         if selected_province != 'all':
             temporal_qs = temporal_qs.filter(health_zone__territory__province__name=selected_province)
         if selected_disease != 'all':
-             temporal_qs = temporal_qs.filter(disease_name=selected_disease)
+            temporal_qs = temporal_qs.filter(disease_name=selected_disease)
         
+        # Données HISTORIQUES (jusqu'à maintenant)
         temporal_data = temporal_qs.values('month').annotate(total=Sum('cases_count')).order_by('month')
         
         t_labels = [d['month'].strftime('%b %y') for d in temporal_data]
         t_vals = [float(d['total']) for d in temporal_data]
         
-        # Add Prediction Forecast to Temporal Chart
+        # Données PRÉDICTIONS RÉCENTES (depuis dernier modèle)
         future_qs = Prediction.objects.all()
         if selected_province != 'all':
             future_qs = future_qs.filter(health_zone__territory__province__name=selected_province)
         if selected_disease != 'all':
-             future_qs = future_qs.filter(disease_name=selected_disease)
-             
-        future_pred = future_qs.aggregate(total=Sum('predicted_cases'))['total']
-        if future_pred is not None and t_labels:
-            pred_date = future_qs.first().prediction_date if future_qs.exists() else None
-            label_str = pred_date.strftime('%b %y (IA)') if pred_date else 'Prévu (IA)'
-            t_labels.append(label_str)
-            t_vals.append(float(future_pred))
+            future_qs = future_qs.filter(disease_name=selected_disease)
+        
+        # Grouper les prédictions par mois
+        future_by_month = future_qs.values('prediction_date').annotate(
+            total=Sum('predicted_cases')
+        ).order_by('prediction_date')
+        
+        # Ajouter les prédictions aux graphiques
+        pred_labels = []
+        pred_vals = []
+        for fp in future_by_month:
+            pred_date = fp['prediction_date']
+            label = pred_date.strftime('%b %y (IA)')
+            pred_labels.append(label)
+            pred_vals.append(float(fp['total']))
+        
+        # Combiner historique + prédictions
+        combined_labels = t_labels + pred_labels
+        combined_vals = t_vals + pred_vals
+        
+        context['chart_temp_labels'] = json.dumps(combined_labels)
+        context['chart_temp_values'] = json.dumps(combined_vals)
+        context['chart_temp_title'] = "📈 Évolution Temporelle : Historique (2014+) + Prédictions IA Récentes"
+        
+        # 4. GRAPHIQUE 4 : Distribution des Tiers (Architecture des Modèles Entraînés)
+        # ⭐ NOUVEAU : Montre quel tier a été utilisé pour chaque prédiction
+        tier_dist = {}
+        all_preds_tier = Prediction.objects.all()
+        if selected_province != 'all':
+            all_preds_tier = all_preds_tier.filter(health_zone__territory__province__name=selected_province)
+        if selected_disease != 'all':
+            all_preds_tier = all_preds_tier.filter(disease_name=selected_disease)
+        
+        for p in all_preds_tier.iterator():
+            tier = (p.influence_factors or {}).get('tier', 4)
+            tier_name = {
+                1: 'Tier 1 (ConvLSTM)',
+                2: 'Tier 2 (CNN-LSTM)',
+                3: 'Tier 3 (Bi-LSTM)',
+                4: 'Tier 4 (Fallback)'
+            }.get(tier, 'Indéfini')
             
-        context['chart_temp_labels'] = json.dumps(t_labels)
-        context['chart_temp_values'] = json.dumps(t_vals)
+            if tier_name not in tier_dist:
+                tier_dist[tier_name] = 0
+            tier_dist[tier_name] += 1
+        
+        tier_labels = list(tier_dist.keys()) if tier_dist else ['Tier 1', 'Tier 2', 'Tier 3', 'Tier 4']
+        tier_counts = list(tier_dist.values()) if tier_dist else [0, 0, 0, 0]
+        
+        context['chart_tier_labels'] = json.dumps(tier_labels)
+        context['chart_tier_values'] = json.dumps(tier_counts)
+        context['chart_tier_title'] = "🏗️ Architecture Modèles Utilisés (Dernière Prédiction)"
+        context['chart_temp_title'] = "📈 Évolution Temporelle : Historique (2014+) + Prédictions IA Récentes"
+        
+        # 5. GRAPHIQUE 5 : Corrélation Climat-Épidémie ⭐ NOUVEAU
+        # Analyser comment température, précipitations influencent les prédictions
+        climate_impact_data = {
+            'temperature_correlation': 0,
+            'precipitation_correlation': 0,
+            'humidity_correlation': 0,
+            'climate_explanation': "Analyse en cours..."
+        }
+        
+        try:
+            # Essayer de charger les données climatiques par province
+            climate_provinces = verify_climate_data() if use_climate and climate_data else None
+            
+            if climate_provinces:
+                from scipy.stats import pearsonr
+                temp_cases = []
+                precip_cases = []
+                
+                # Croiser données climatiques avec prédictions
+                for prov_name, climate_df in climate_provinces.items():
+                    province = Province.objects.filter(name=prov_name).first()
+                    if province:
+                        prov_preds = Prediction.objects.filter(
+                            health_zone__territory__province=province
+                        ).select_related('health_zone')
+                        
+                        for pred in prov_preds.iterator():
+                            # Récupérer dernière date climatique
+                            if not climate_df.empty:
+                                latest_climate = climate_df.iloc[-1]
+                                temp_cases.append((latest_climate.get('temperature', 25), float(pred.predicted_cases)))
+                                precip_cases.append((latest_climate.get('precipitation', 100), float(pred.predicted_cases)))
+                
+                # Calculer corrélations
+                if temp_cases and len(temp_cases) > 2:
+                    temps = [x[0] for x in temp_cases]
+                    cases = [x[1] for x in temp_cases]
+                    try:
+                        corr_temp, _ = pearsonr(temps, cases)
+                        climate_impact_data['temperature_correlation'] = round(corr_temp, 2)
+                    except:
+                        pass
+                
+                if precip_cases and len(precip_cases) > 2:
+                    precips = [x[0] for x in precip_cases]
+                    cases = [x[1] for x in precip_cases]
+                    try:
+                        corr_precip, _ = pearsonr(precips, cases)
+                        climate_impact_data['precipitation_correlation'] = round(corr_precip, 2)
+                    except:
+                        pass
+                
+                # Explication scientifique
+                if climate_impact_data['temperature_correlation'] > 0.3:
+                    climate_impact_data['climate_explanation'] = f"🌡️ Forte corrélation chaleur-épidémie (r={climate_impact_data['temperature_correlation']}). Transmission accélérée par T°."
+                elif climate_impact_data['precipitation_correlation'] > 0.3:
+                    climate_impact_data['climate_explanation'] = f"🌧️ Forte corrélation pluie-épidémie (r={climate_impact_data['precipitation_correlation']}). Conditions d'eau stagnante favorables."
+                else:
+                    climate_impact_data['climate_explanation'] = "⛅ Climat modérément favorable. Facteurs multi-causaux détectés."
+        except Exception as e:
+            pass
+        
+        context['climate_impact'] = climate_impact_data
         
         return context
 

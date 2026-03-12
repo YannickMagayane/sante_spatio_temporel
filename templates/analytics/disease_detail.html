@@ -1,0 +1,215 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ disease }} - Analyse Globale{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-red-900 to-rose-900 text-white py-8 px-6">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-4xl font-black mb-2">🦠 {{ disease }} - Surveillance Nationale</h1>
+            <p class="text-red-100">Vue globale de la propagation et de la charge morbide</p>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 py-8">
+        <!-- Global Statistics -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">📊 Statistiques Globales</h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="bg-gradient-to-br from-red-50 to-rose-50 rounded-xl p-6 border border-red-200">
+                    <div class="text-4xl font-black text-red-600 mb-2">{{ global_stats.total_cases }}</div>
+                    <div class="text-sm text-red-700 font-semibold">Cas total en RDC</div>
+                    <div class="text-xs text-red-600 mt-2">Tous les enregistrements combinés</div>
+                </div>
+                
+                <div class="bg-gradient-to-br from-gray-50 to-slate-50 rounded-xl p-6 border border-gray-200">
+                    <div class="text-4xl font-black text-gray-800 mb-2">{{ global_stats.total_deaths }}</div>
+                    <div class="text-sm text-gray-700 font-semibold">Décès</div>
+                    <div class="text-xs text-gray-600 mt-2">Létalité globale: {{ global_stats.fatality_rate }}%</div>
+                </div>
+                
+                <div class="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
+                    <div class="text-4xl font-black text-purple-600 mb-2">{{ global_stats.affected_zones }}</div>
+                    <div class="text-sm text-purple-700 font-semibold">Zones affectées</div>
+                    <div class="text-xs text-purple-600 mt-2">Zone de santé uniques</div>
+                </div>
+
+                <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6 border border-blue-200">
+                    <div class="text-4xl font-black text-blue-600 mb-2">{{ provinces_count }}</div>
+                    <div class="text-sm text-blue-700 font-semibold">Provinces touchées</div>
+                    <div class="text-xs text-blue-600 mt-2">Sur 26 provinces nationales</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Global Timeline -->
+        {% if global_timeline %}
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">📈 Chronologie Nationale</h2>
+            <img src="{{ global_timeline }}" alt="Global timeline for {{ disease }}" class="w-full rounded-lg mb-4">
+            <p class="text-sm text-slate-600">
+                <strong>Interprétation :</strong> La zone remplie rouge montre la tendance cumulée nationale du {{ disease }}.
+                Les pics identifient les periodes d'épidémie majeures. Les creux indiquent les périodes de contrôle.
+            </p>
+        </div>
+        {% endif %}
+
+        <!-- Province Comparison -->
+        {% if province_comparison %}
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">🗺️ Comparaison par Province</h2>
+            <img src="{{ province_comparison }}" alt="Province comparison for {{ disease }}" class="w-full rounded-lg mb-4">
+            <p class="text-sm text-slate-600">
+                <strong>Interprétation :</strong> La hauteur des barres indique la charge morbide du {{ disease }} dans chaque province.
+                Les provinces avec les barres les plus longues sont les zones prioritaires pour l'intervention.
+            </p>
+        </div>
+        {% endif %}
+
+        <!-- Provinces List -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">📍 Provinces Affectées</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for province in provinces %}
+                <a href="{% url 'analytics:disease_detail' %}?disease={{ disease }}&province={{ province.name }}" 
+                   class="p-4 border border-slate-200 rounded-lg hover:border-red-500 hover:bg-red-50 transition cursor-pointer">
+                    <div class="font-bold text-slate-900">{{ province.name }}</div>
+                    <div class="text-sm text-slate-600 mt-1">
+                        {{ province.territories.count }} territoires
+                    </div>
+                    <div class="text-xs text-slate-500 mt-2">→ Voir analyse détaillée</div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- PROVINCE-LEVEL ANALYSIS -->
+        {% if province_analysis %}
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl shadow-lg p-6 mb-8 border-2 border-amber-300">
+            <h2 class="text-3xl font-black text-slate-900 mb-6">🔬 Analyse Approfondie - {{ province }}</h2>
+            
+            <!-- Per Capita Graph -->
+            {% if province_analysis.per_capita_graph %}
+            <div class="bg-white rounded-lg p-6 mb-6">
+                <h3 class="text-xl font-bold text-slate-900 mb-4">📊 Taux d'Incidence par Zone (cas/100k habitants)</h3>
+                <img src="{{ province_analysis.per_capita_graph }}" alt="Per capita graph" class="w-full rounded-lg mb-3">
+                <p class="text-sm text-slate-600">
+                    <strong>🧠 Interprétation :</strong> 
+                    Les zones en <span class="text-red-600 font-bold">rouge</span> ont une incidence critique (>100/100k).
+                    Les zones en <span class="text-amber-600 font-bold">orange</span> sont à surveiller (50-100/100k).
+                    Les zones en <span class="text-green-600 font-bold">vert</span> sont sous contrôle (<50/100k).
+                </p>
+            </div>
+            {% endif %}
+
+            <!-- Climate Correlation Graph -->
+            {% if province_analysis.climate_correlation_graph %}
+            <div class="bg-white rounded-lg p-6 mb-6">
+                <h3 class="text-xl font-bold text-slate-900 mb-4">🌡️ Corrélations Climatiques</h3>
+                <img src="{{ province_analysis.climate_correlation_graph }}" alt="Climate correlation graph" class="w-full rounded-lg mb-3">
+                <p class="text-sm text-slate-600">
+                    <strong>🧠 Interprétation :</strong> 
+                    Trois graphiques montrent les relations entre les cas de {{ disease }} et:
+                    <br>1️⃣ <span class="text-amber-600 font-bold">Température</span> - Impact saisonnier direct
+                    <br>2️⃣ <span class="text-blue-600 font-bold">Précipitations</span> - Vecteurs et conditions d'eau stagnante
+                    <br>3️⃣ <span class="text-purple-600 font-bold">Humidité</span> - Confort des vecteurs (moustiques, etc.)
+                </p>
+            </div>
+            {% endif %}
+
+            <!-- Zones Distribution Graph -->
+            {% if province_analysis.zones_distribution_graph %}
+            <div class="bg-white rounded-lg p-6 mb-6">
+                <h3 class="text-xl font-bold text-slate-900 mb-4">📍 Distribution par Zone de Santé (Top 20)</h3>
+                <img src="{{ province_analysis.zones_distribution_graph }}" alt="Zones distribution graph" class="w-full rounded-lg mb-3">
+                <p class="text-sm text-slate-600">
+                    <strong>🧠 Interprétation :</strong> 
+                    Barres <span class="text-red-600 font-bold">rouges</span> = cas confirmés.
+                    Barres <span class="text-red-900 font-bold">marron</span> = létalité.
+                    Les zones avec les barres les plus hautes nécessitent une intervention prioritaire.
+                </p>
+            </div>
+            {% endif %}
+
+            <!-- System Effectiveness Graph -->
+            {% if province_analysis.system_effectiveness_graph %}
+            <div class="bg-white rounded-lg p-6 mb-6">
+                <h3 class="text-xl font-bold text-slate-900 mb-4">🎯 Efficacité du Système - Prédictions vs Réalité</h3>
+                <img src="{{ province_analysis.system_effectiveness_graph }}" alt="System effectiveness graph" class="w-full rounded-lg mb-3">
+                <p class="text-sm text-slate-600">
+                    <strong>🧠 Interprétation :</strong> 
+                    <br>🔵 <span class="text-blue-600 font-bold">Ligne bleue (zone remplie)</span> = Données réelles confirme
+                    <br>🔴 <span class="text-red-600 font-bold">Ligne pointillée rose</span> = Prédictions du modèle IA
+                    <br>Si les courbes se rapprochent = modèle performant.<br>Si écart important = données manquantes ou anomalies.
+                </p>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Provinces List (if national view) -->
+        {% if not province_analysis %}
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">📍 Provinces Affectées</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for province in provinces %}
+                <a href="{% url 'analytics:disease_detail' %}?disease={{ disease }}&province={{ province.name }}" 
+                   class="p-4 border border-slate-200 rounded-lg hover:border-red-500 hover:bg-red-50 transition cursor-pointer">
+                    <div class="font-bold text-slate-900">{{ province.name }}</div>
+                    <div class="text-sm text-slate-600 mt-1">
+                        {{ province.territories.count }} territoires
+                    </div>
+                    <div class="text-xs text-slate-500 mt-2">→ Voir analyse détaillée</div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Interpretation Guide -->
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-lg p-6 mb-8 border-l-4 border-blue-500">
+            <h3 class="text-xl font-bold text-slate-900 mb-4">🧠 Guide d'Interprétation</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h4 class="font-bold text-slate-800 mb-2">📊 Métriques Clés</h4>
+                    <ul class="space-y-2 text-sm text-slate-700">
+                        <li><span class="font-semibold">Cas total :</span> Tous les cas confirmés enregistrés</li>
+                        <li><span class="font-semibold">Décès :</span> Nombre de décès attribués</li>
+                        <li><span class="font-semibold">Létalité :</span> Ratio Décès/Cas (%)
+                            <ul class="text-xs ml-4">
+                                <li>< 1% = Contrôlée</li>
+                                <li>1-5% = Modérée</li>
+                                <li>> 5% = Grave</li>
+                            </ul>
+                        </li>
+                        <li><span class="font-semibold">Zones affectées :</span> Diversité géographique</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-bold text-slate-800 mb-2">🎯 Recommandations</h4>
+                    <ul class="space-y-2 text-sm text-slate-700">
+                        <li>✓ <span class="font-semibold">1-100 cas :</span> Surveillance mensuelle</li>
+                        <li>⚠️ <span class="font-semibold">100-1K cas :</span> Alerte sanitaire</li>
+                        <li>🔴 <span class="font-semibold">> 1K cas :</span> Intervention d'urgence</li>
+                        <li>📍 Lier aux données climatiques pour identification des vecteurs</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="flex gap-4 justify-center mb-8">
+            <a href="{% url 'analytics:dashboard' %}" class="px-6 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition font-semibold">
+                ← Retour au Dashboard
+            </a>
+            <a href="{% url 'analytics:dashboard' %}?disease={{ disease }}" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold">
+                Voir sur la Carte
+            </a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

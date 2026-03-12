@@ -808,8 +808,8 @@ def inject_who_clinical_data():
         HealthZone.objects.filter(
             code__startswith='CD',
             geometry__has_key='level',
+            population__gt=0,  # ✅ Ensure population is positive
         )
-        .exclude(population=0)
         .select_related('territory__province')
     )
 
@@ -822,6 +822,14 @@ def inject_who_clinical_data():
 
     if not zones:
         logger.warning("⚠️ Aucune zone avec population trouvée.")
+        return
+
+    # 🔍 VALIDATION: Vérifier que toutes les zones existent réellement
+    valid_ids = set(HealthZone.objects.filter(id__in=[z.id for z in zones]).values_list('id', flat=True))
+    zones = [z for z in zones if z.id in valid_ids]
+    
+    if not zones:
+        logger.warning("⚠️ Aucune zone valide en base de données.")
         return
 
     total_pop = sum(z.population for z in zones)
@@ -937,6 +945,14 @@ def _distribute_cases_to_zones(zones, total_pop, disease, d_date, national_cases
     if total_pop <= 0:
         return 0
 
+    # 🔍 VALIDATION: S'assurer que toutes les zones existent en base de données
+    valid_zone_ids = set(HealthZone.objects.filter(id__in=[z.pk for z in zones]).values_list('id', flat=True))
+    zones = [z for z in zones if z.pk in valid_zone_ids]
+    
+    if not zones:
+        logger.warning(f"⚠️  Aucune zone valide trouvée pour {disease} le {d_date}")
+        return 0
+
     # Check if data already exists for this disease/date to avoid duplicates
     existing = set(
         ClinicalData.objects.filter(
@@ -975,7 +991,14 @@ def _distribute_cases_to_zones(zones, total_pop, disease, d_date, national_cases
 
     # Bulk create in batches of 500
     if to_create:
-        ClinicalData.objects.bulk_create(to_create, batch_size=500, ignore_conflicts=True)
+        try:
+            ClinicalData.objects.bulk_create(to_create, batch_size=500, ignore_conflicts=True)
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'insertion pour {disease}: {e}")
+            # Log problematic zones pour debugging
+            problematic_ids = [c.health_zone_id for c in to_create]
+            logger.error(f"   Health Zone IDs problématiques: {problematic_ids}")
+            return 0
 
     return len(to_create) + len(to_update_ids)
 

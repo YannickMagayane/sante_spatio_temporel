@@ -34,12 +34,18 @@ data/sanitaires
 data/geospatial
 models/
 reports/
+docs/*.docx
+docs/*.xlsx
+docs/*.pdf
+*.docx
+*.xlsx
+*.pptx
 *.sqlite
 *.sqlite.zip
 *.geojson
 *.shp
 *.db
-
+docs/
 
 # ======================
 # IDE & Editor
@@ -65,3 +71,12 @@ Thumbs.db
 _bmad/
 .agent/
 _bmad-output/
+
+# ======================
+# KEEP IN GIT (Important Documentation)
+# ======================
+!README_MAIN.md
+!README.md
+!docs/
+!docs/*.md
+!.gitignore

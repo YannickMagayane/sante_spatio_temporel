@@ -3,16 +3,21 @@ Seed script to populate HealthZone model from HDX GeoJSON data.
 """
 
 import os
+import sys
 import django
 import json
 import logging
-from django.core.management import execute_from_command_line
+
+# Add the app directory to path so Django can find core module
+app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if app_dir not in sys.path:
+    sys.path.insert(0, app_dir)
 
 # Setup Django environment
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 
-from analytics.models import HealthZone
+from analytics.models import HealthZone, Territory, Province
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,23 +37,40 @@ def seed_health_zones(geojson_path="data/geospatial/zones_sante/cod_ab_health_zo
         geom = feature.get('geometry')
         
         # Pcode acts as a unique identifier
-        pcode = props.get('adm2_pcode')
+        pcode = props.get('adm2_pcode')  # or adm3_pcode for health zones
         if not pcode: continue
 
-        # Calculate representative point (centroid-like-ish)
-        # Using the middle of coordinates if centroid is too complex to compute without deps
-        # But we have GeoPandas in the requirements, so we could use it if pip finishes.
-        # For seeding, we can store the raw geometry and compute lat/lon later or via properties.
+        # Get or create the Territory first
+        adm2_pcode = props.get('adm2_pcode')
+        adm1_name = props.get('adm1_fr', 'Unknown')
+        adm2_name = props.get('adm2_fr', 'Unknown')
         
-        # Some HDX files have 'latitude' and 'longitude' in properties
+        # Ensure Province exists
+        province, _ = Province.objects.get_or_create(
+            code=props.get('adm1_pcode', f'prov_{adm1_name}'),
+            defaults={'name': adm1_name}
+        )
+        
+        # Ensure Territory exists
+        territory, _ = Territory.objects.get_or_create(
+            code=adm2_pcode,
+            defaults={
+                'name': adm2_name,
+                'province': province,
+                'latitude': props.get('latitude'),
+                'longitude': props.get('longitude'),
+                'population': props.get('population', 0)
+            }
+        )
+
         lat = props.get('latitude')
         lon = props.get('longitude')
 
         HealthZone.objects.update_or_create(
             code=pcode,
             defaults={
-                'name': props.get('adm2_fr', 'Unknown'),
-                'province': props.get('adm1_fr', 'Unknown'),
+                'name': props.get('adm3_fr', props.get('name', 'Unknown')),
+                'territory': territory,
                 'latitude': lat,
                 'longitude': lon,
                 'geometry': geom,

@@ -9,7 +9,7 @@
         border-radius: 40px;
         overflow: hidden;
         border: 1px solid rgba(255, 255, 255, 0.05);
-        box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.7);
+        box-shadow: 0 50px 100px -20px rgba(90, 79, 79, 0.7);
     }
 
     iframe {
@@ -85,7 +85,14 @@
             <div class="flex gap-2">
                 <a href="{% url 'analytics:dashboard' %}"
                     class="px-4 py-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 text-[10px] font-black uppercase rounded-xl border border-brand-500/20 transition-all">Dashboard</a>
-
+                {% if selected_province != 'all' %}
+                <a href="{% url 'analytics:province_analysis' %}?province={{ selected_province }}"
+                    class="px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-[10px] font-black uppercase rounded-xl border border-blue-500/20 transition-all">📊 Analyse Province</a>
+                {% endif %}
+                {% if selected_disease != 'all' %}
+                <a href="{% url 'analytics:disease_detail' %}?disease={{ selected_disease }}"
+                    class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] font-black uppercase rounded-xl border border-red-500/20 transition-all">🦠 Analyse Maladie</a>
+                {% endif %}
             </div>
 
             <div class="h-10 w-[1px] bg-white/10 mx-2 hidden md:block"></div>
@@ -486,6 +493,79 @@
                             <canvas id="modelChart"></canvas>
                         </div>
                     </div>
+
+                    <!-- Graph 4: Distribution Tiers ⭐ NOUVEAU -->
+                    <div class="glass p-6 rounded-[2.5rem] border-white/5 transition-all hover:border-purple-500/20">
+                        <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex justify-between items-center"
+                            title="Architecture des modèles utilisés pour les prédictions (Tier 1=ConvLSTM, Tier 2=CNN-LSTM, Tier 3=Bi-LSTM, Tier 4=Fallback)">
+                            <span class="flex items-center gap-2"><span
+                                    class="w-2 h-2 rounded-full bg-purple-500"></span> {{ chart_tier_title|default:"Architecture Modèles Utilisés" }}</span>
+                            <span
+                                class="bg-white/10 rounded-full w-4 h-4 flex items-center justify-center text-[9px] cursor-help text-white">?</span>
+                        </h4>
+                        <div class="h-[200px]">
+                            <canvas id="tierChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Graph 5: Impact Climatique ⭐ NOUVEAU -->
+                    <div class="glass p-6 rounded-[2.5rem] border-white/5 transition-all hover:border-cyan-500/20">
+                        <h4 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-4 flex justify-between items-center"
+                            title="Corrélation entre conditions climatiques et propagation épidémique">
+                            <span class="flex items-center gap-2"><span
+                                    class="w-2 h-2 rounded-full bg-cyan-500"></span> 🌡️ Impact Climatique</span>
+                            <span
+                                class="bg-white/10 rounded-full w-4 h-4 flex items-center justify-center text-[9px] cursor-help text-white">?</span>
+                        </h4>
+                        <div class="p-4 bg-slate-900/30 rounded-lg border border-cyan-500/20">
+                            <div style="font-size: 12px; color: #e0f2fe; line-height: 1.6;">
+                                <p style="margin: 0 0 8px 0; font-weight: bold; color: #06b6d4;">{{ climate_impact.climate_explanation }}</p>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
+                                    <div style="background: rgba(30,144,255,0.1); padding: 8px; border-left: 3px solid #1e90ff;">
+                                        <div style="font-weight: bold; color: #1e90ff;">🌡️ Température</div>
+                                        <div style="color: #b0e0e6;">r = {{ climate_impact.temperature_correlation }}</div>
+                                    </div>
+                                    <div style="background: rgba(30,144,255,0.1); padding: 8px; border-left: 3px solid #00bfff;">
+                                        <div style="font-weight: bold; color: #00bfff;">🌧️ Précipitations</div>
+                                        <div style="color: #b0e0e6;">r = {{ climate_impact.precipitation_correlation }}</div>
+                                    </div>
+                                </div>
+                                <p style="margin: 8px 0 0 0; font-size: 9px; color: #94a3b8; font-style: italic;">
+                                    Coefficient de corrélation Pearson (r). r > 0.3 = corrélation significative.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 6. Section Impact Climatique Détaillée -->
+                <div class="lg:col-span-12 glass p-8 rounded-[2.5rem] border-white/5 mt-6 mb-8">
+                    <h3 class="text-xl font-black text-white mb-4 flex items-center gap-2">
+                        <span class="text-2xl">🌍</span> Influence du Climat sur l'Épidémiologie
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-gradient-to-br from-orange-500/10 to-red-500/10 p-4 rounded-lg border border-orange-500/20">
+                            <div class="text-sm font-bold text-orange-300 mb-2">🌡️ Température</div>
+                            <p class="text-xs text-orange-200">
+                                Les vecteurs (moustiques, tiques) sont <b>plus actifs</b> entre 20-28°C. 
+                                Paludisme et Dengue ↑ exponentiellement dans cette plage.
+                            </p>
+                        </div>
+                        <div class="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 p-4 rounded-lg border border-blue-500/20">
+                            <div class="text-sm font-bold text-blue-300 mb-2">🌧️ Précipitations</div>
+                            <p class="text-xs text-blue-200">
+                                L'eau stagnante <b>crée des gîtes</b> larvaires. 
+                                Choléra et maladies hydriques ↑ après saisons des pluies.
+                            </p>
+                        </div>
+                        <div class="bg-gradient-to-br from-emerald-500/10 to-green-500/10 p-4 rounded-lg border border-emerald-500/20">
+                            <div class="text-sm font-bold text-emerald-300 mb-2">💨 Humidité Relative</div>
+                            <p class="text-xs text-emerald-200">
+                                >60% d'humidité <b>prolonge la survie</b> des vecteurs.
+                                Synergy: Chaleur + Humidité = Transmission maximale.
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -581,6 +661,41 @@
             ...ctxOptions,
             scales: { r: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false } } }
         }
+        });
+
+        // 4. Tier Distribution Chart (Bar Chart) ⭐ NOUVEAU
+        new Chart(document.getElementById('tierChart'), {
+            type: 'bar',
+            data: {
+                labels: {{ chart_tier_labels| safe }},
+                datasets: [{
+                    data: {{ chart_tier_values| safe }},
+                    backgroundColor: [
+                        'rgba(99, 102, 241, 0.9)',   // Tier 1 = Indigo
+                        'rgba(168, 85, 247, 0.9)',   // Tier 2 = Purple
+                        'rgba(236, 72, 153, 0.9)',   // Tier 3 = Pink
+                        'rgba(107, 114, 128, 0.9)'   // Tier 4 = Gray
+                    ],
+                    borderWidth: 1,
+                    borderColor: 'rgba(15, 23, 42, 1)',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                ...ctxOptions,
+                indexAxis: 'x',
+                plugins: {
+                    ...ctxOptions.plugins,
+                    tooltip: {
+                        ...ctxOptions.plugins.tooltip,
+                        callbacks: {
+                            label: function(context) {
+                                return context.raw + ' prédictions';
+                            }
+                        }
+                    }
+                }
+            }
         });
     });
 
