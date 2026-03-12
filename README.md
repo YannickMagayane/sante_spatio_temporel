@@ -72,52 +72,6 @@ docker-compose down
 
 ---
 
-## 🎮 Web Interface: Training & Data Ingestion (NEW)
-
-HealthDRC v3.0 includes a **complete web interface** for managing model training and data ingestion without using the CLI!
-
-### 🚀 Deploy the Web Interface
-
-```bash
-# 1️⃣ Restart Docker to apply migrations
-docker-compose down
-docker-compose up -d
-
-# 2️⃣ Wait for database to be ready
-sleep 30
-
-# 3️⃣ Verify migrations were applied
-docker exec health_app_1 python manage.py showmigrations analytics
-```
-
-### 📍 Access the Interface
-
-**Dashboard with Control Buttons**: `http://localhost:8000/`
-- Look for the **"⚙️ Gestion des Données & Modèles"** section
-- 🧠 **"Entraîner les Modèles"** — Launch model training (non-blocking)
-- 📥 **"Injecter Données HDX"** — Sync data from HDX (non-blocking)
-
-**Task History & Monitoring**: `http://localhost:8000/tasks/`
-- View all training & ingestion jobs
-- Monitor progress in real-time
-- Download logs if errors occur
-
-### 💡 How It Works
-
-1. **Click a button** on the dashboard
-2. **Background task starts** (doesn't block the interface)
-3. **Logs are captured** and stored in the database
-4. **View progress** on the `/tasks/` page
-5. **Results update** automatically on the dashboard
-
-**Key Benefits**:
-- ✅ No need to use command line
-- ✅ Interface stays responsive during training
-- ✅ Full history of all jobs
-- ✅ Error tracking & recovery
-
----
-
 ## 🧠 Architecture: The 4-Tier System
 
 The system intelligently selects the best model architecture based on available data:
@@ -319,7 +273,7 @@ docker-compose exec app python scripts/train_models.py \
 
 ---
 
-## 📊 Dashboard Usage
+## � Dashboard Usage
 
 Access the dashboard at `http://localhost:8000/analysis/disease/`
 
