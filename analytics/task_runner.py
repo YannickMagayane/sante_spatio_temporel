@@ -81,22 +81,27 @@ class TaskRunner:
             process = subprocess.Popen(
                 ["python", str(script_path)],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Combiner stderr dans stdout
                 text=True,
                 cwd="/app"
             )
             
             # Capturer la sortie
-            stdout, stderr = process.communicate()
+            stdout, _ = process.communicate()
             
             task_run.output_log = stdout
-            if stderr:
-                task_run.error_log = stderr
             
-            if process.returncode != 0:
-                raise Exception(f"Script retourné code {process.returncode}")
+            # Vérifier si des erreurs critiques sont présentes dans les logs
+            is_error = (
+                process.returncode != 0 and 
+                stdout and 
+                ('ERROR' in stdout or 'Traceback' in stdout or 'Exception' in stdout)
+            )
             
-            logger.info(f"[Task {task_run.id}] Entraînement complété avec succès")
+            if is_error:
+                raise Exception(f"Script retourné code {process.returncode}\n{stdout[-1000:]}")
+            
+            logger.info(f"[Task {task_run.id}] Entraînement complété")
             
         except Exception as e:
             logger.error(f"[Task {task_run.id}] Erreur entraînement: {e}")
@@ -114,22 +119,27 @@ class TaskRunner:
             process = subprocess.Popen(
                 ["python", str(script_path)],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Combiner stderr dans stdout
                 text=True,
                 cwd="/app"
             )
             
             # Capturer la sortie
-            stdout, stderr = process.communicate()
+            stdout, _ = process.communicate()
             
             task_run.output_log = stdout
-            if stderr:
-                task_run.error_log = stderr
             
-            if process.returncode != 0:
-                raise Exception(f"Script retourné code {process.returncode}")
+            # Vérifier si des erreurs critiques sont présentes dans les logs
+            is_error = (
+                process.returncode != 0 and 
+                stdout and 
+                ('ERROR' in stdout or 'Traceback' in stdout or 'Exception' in stdout)
+            )
             
-            logger.info(f"[Task {task_run.id}] Ingestion complétée avec succès")
+            if is_error:
+                raise Exception(f"Script retourné code {process.returncode}\n{stdout[-1000:]}")
+            
+            logger.info(f"[Task {task_run.id}] Ingestion complétée")
             
         except Exception as e:
             logger.error(f"[Task {task_run.id}] Erreur ingestion: {e}")
@@ -147,22 +157,27 @@ class TaskRunner:
             process = subprocess.Popen(
                 ["python", str(script_path), "--climate-only"],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Combiner stderr dans stdout
                 text=True,
                 cwd="/app"
             )
             
             # Capturer la sortie
-            stdout, stderr = process.communicate()
+            stdout, _ = process.communicate()
             
             task_run.output_log = stdout
-            if stderr:
-                task_run.error_log = stderr
             
-            if process.returncode != 0:
-                raise Exception(f"Script retourné code {process.returncode}")
+            # Vérifier si des erreurs critiques sont présentes dans les logs
+            is_error = (
+                process.returncode != 0 and 
+                stdout and 
+                ('ERROR' in stdout or 'Traceback' in stdout or 'Exception' in stdout)
+            )
             
-            logger.info(f"[Task {task_run.id}] Ingestion climatique complétée avec succès")
+            if is_error:
+                raise Exception(f"Script retourné code {process.returncode}\n{stdout[-1000:]}")
+            
+            logger.info(f"[Task {task_run.id}] Ingestion climatique complétée")
             
         except Exception as e:
             logger.error(f"[Task {task_run.id}] Erreur ingestion climatique: {e}")

@@ -88,6 +88,9 @@ CLIMATE_CSV_PATH = Path("/app/data/climat/rdc_climate_monthly.csv")
 CLIMATE_PKL_PATH = Path("/app/data/climat/rdc_climate_monthly.pkl")
 CLIMATE_PROVINCES_DIR = Path("/app/data/climat/provinces")
 
+# Métadonnées d'entraînement
+METADATA_FILE = Path("/app/models/training_metadata.json")
+
 # Maladies épidémiques prioritaires — seules ces maladies sont entraînées.
 # Exclut les maladies chroniques (Anémie, Malnutrition, Onchocercose, etc.)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -914,6 +917,117 @@ def reliability_score(r2, tier):
     return round(min(99.0, raw_score), 2)
 
 
+# ── Training Metadata & Progressive Prediction ───────────────────────────
+
+def load_metadata():
+    """Charge les métadonnées du dernier entraînement."""
+    if METADATA_FILE.exists():
+        try:
+            with open(METADATA_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+def save_metadata(metadata):
+    """Sauvegarde les métadonnées d'entraînement."""
+    with open(METADATA_FILE, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+
+def should_retrain():
+    """
+    Vérifie si un (re)entraînement est nécessaire.
+    
+    Conditions pour réentraîner:
+    - Aucun modèle n'existe
+    - Les données ont été mises à jour depuis le dernier entraînement
+    - La métafile signale un besoin de réentraînement
+    
+    :returns: (bool) True si réentraînement nécessaire
+    """
+    metadata = load_metadata()
+    
+    # Si jamais entraîné
+    if 'last_training_date' not in metadata:
+        logger.info("📋 Aucun entraînement antérieur détecté.")
+        return True
+    
+    # Vérifier si modèles existent
+    keras_models = list(MODELS_DIR.glob("*.keras"))
+    if not keras_models:
+        logger.info("📋 Aucun modèle Keras trouvé.")
+        return True
+    
+    # Vérifier si forcer_retrain est activé
+    if metadata.get('force_retrain', False):
+        logger.info("📋 Force réentraînement activée dans les métadonnées.")
+        return True
+    
+    # Vérifier si données ont changé
+    try:
+        last_training = datetime.fromisoformat(metadata['last_training_date'])
+        last_data_update = ClinicalData.objects.order_by('-month').first()
+        
+        if last_data_update and last_data_update.month > last_training.date():
+            logger.info(f"📋 Données mises à jour après dernier entraînement ({last_data_update.month} > {last_training.date()}).")
+            return True
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur vérification métadonnées: {e}")
+        return True
+    
+    logger.info("✓ Modèles à jour - pas de réentraînement nécessaire.")
+    return False
+
+
+def get_current_month_prediction_targets():
+    """
+    Retourne le mois prochain à prédire à partir d'aujourd'hui (1 seul mois).
+    
+    :returns: list de dates (datetime.date) pour le mois prochain seulement
+    """
+    today = date.today()
+    targets = []
+    
+    # Mois à prédire: mois prochain seulement
+    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    targets.append(next_month)
+    
+    return targets
+
+
+def get_yearly_prediction_targets():
+    """
+    Retourne les cibles de prédiction pour l'année actuelle et à venir.
+    
+    Génère uniquement les prédictions pour:
+    - L'année actuelle: les 2 prochains mois
+    - Les années futures: 1er mois de chaque année
+    
+    (Les prédictions rétrospectives pour les années passées ont été supprimées)
+    
+    :returns: list de tuples (year, [target_dates])
+    """
+    yearly_targets = []
+    
+    current_year = date.today().year
+    current_date = date.today()
+    
+    # Année actuelle: prédictions pour les mois à venir
+    targets = get_current_month_prediction_targets()
+    if targets:
+        yearly_targets.append((current_year, targets))
+    
+    # Années futures: prédiction pour le 1er mois de chaque année
+    # (optionnel: ajouter prédictions pour 1-2 années suivantes)
+    for future_year in range(current_year + 1, current_year + 3):  # Années suivantes
+        target = date(future_year, 1, 1)
+        yearly_targets.append((future_year, [target]))
+    
+    return yearly_targets
+
+
 def verify_climate_data():
     """
     Vérifie la disponibilité et la couverture des données climatiques PAR PROVINCE.
@@ -1068,7 +1182,55 @@ def verify_climate_data():
 
 # ── Main Training Loop ─────────────────────────────────────────────────────
 
-def train_and_predict():
+def do_progressive_predictions():
+    """
+    Exécute les prédictions progressives pour chaque année depuis le début des données.
+    
+    Pour chaque année jusqu'à l'année actuelle:
+    - Années passées: prédiction pour le 1er mois de l'année suivante
+    - Année actuelle: prédictions pour les 2 prochains mois
+    
+    Les modèles doivent déjà être entraînés et disponibles.
+    
+    :returns: None (écrit les prédictions en base de données)
+    """
+    logger.info("\n" + "=" * 70)
+    logger.info("📊 PRÉDICTIONS PROGRESSIVES (par année)")
+    logger.info("=" * 70)
+    
+    yearly_targets = get_yearly_prediction_targets()
+    
+    if not yearly_targets:
+        logger.warning("⚠️ Aucune cible de prédiction trouvée.")
+        return
+    
+    total_predictions_created = 0
+    
+    for year, target_dates in yearly_targets:
+        logger.info(f"\n{'─'*70}")
+        logger.info(f"📅 ANNÉE {year}")
+        logger.info(f"{'─'*70}")
+        
+        for target_date in target_dates:
+            logger.info(f"\n   🎯 Prédiction pour: {target_date.strftime('%B %Y')}")
+            logger.info(f"   {'─'*60}")
+            
+            try:
+                # Appeler train_and_predict avec date cible spécifique (mode prédiction uniquement)
+                count = train_and_predict(prediction_date=target_date, train_mode=False, verbose=False)
+                total_predictions_created += count
+                logger.info(f"   ✓ {count} prédictions créées")
+            
+            except Exception as e:
+                logger.error(f"   ✗ Erreur pour {target_date}: {e}")
+    
+    logger.info("\n" + "=" * 70)
+    logger.info(f"🏁 PRÉDICTIONS PROGRESSIVES TERMINÉES")
+    logger.info(f"   Total: {total_predictions_created} prédictions créées")
+    logger.info("=" * 70)
+
+
+def train_and_predict(prediction_date=None, train_mode=True, verbose=True):
     """
     Point d'entrée principal du moteur d'entraînement IA.
 
@@ -1076,21 +1238,33 @@ def train_and_predict():
     approprié selon la densité des données, entraîne le modèle et distribue
     les prédictions sur toutes les zones de santé de la province.
 
-    :returns: None (écrit en base de données et génère un rapport JSON).
+    :param prediction_date: (optionnel) date cible pour la prédiction. 
+                           Si None, utilise le prochain mois.
+    :param train_mode: (optionnel) si False, utilise modèles existants sans réentraîner.
+                      Défaut: True (entraîne les modèles)
+    :param verbose: (optionnel) affiche les logs (défaut: True)
+    :returns: nombre de prédictions créées
 
     Example:
-        >>> train_and_predict()
+        >>> train_and_predict()  # Entraîne + prédit mois prochain
+        >>> train_and_predict(prediction_date=date(2024, 1, 1))  # Entraîne + prédit pour 2024-01
+        >>> train_and_predict(prediction_date=date(2024, 1, 1), train_mode=False)  # Juste prédit pour 2024-01
     """
-    logger.info("=" * 70)
-    logger.info("🧠 SPATIO-TEMPORAL AI ENGINE — ConvLSTM + CNN-LSTM + Bi-LSTM")
-    logger.info("=" * 70)
-    logger.info("")
-    logger.info("🔧 AMÉLIORATIONS APPLIQUÉES:")
-    logger.info("  ✓ Nettoyage intelligent : variance + couverture de données")
-    logger.info("  ✓ Gestion saisonnalité : sin/cos préservés en inversion")
-    logger.info("  ✓ Split temporal : 60% train | 20% validation | 20% TEST réel")
-    logger.info("  ✓ Métriques sur FUTUR CONNU : validation backtesting")
-    logger.info("  ✓ Données climatiques PAR PROVINCE : Température, Précipitations, Humidité")
+    if train_mode:
+        logger.info("=" * 70)
+        logger.info("🧠 SPATIO-TEMPORAL AI ENGINE — ConvLSTM + CNN-LSTM + Bi-LSTM")
+        logger.info("=" * 70)
+        logger.info("")
+        logger.info("🔧 AMÉLIORATIONS APPLIQUÉES:")
+        logger.info("  ✓ Nettoyage intelligent : variance + couverture de données")
+        logger.info("  ✓ Gestion saisonnalité : sin/cos préservés en inversion")
+        logger.info("  ✓ Split temporal : 60% train | 20% validation | 20% TEST réel")
+        logger.info("  ✓ Métriques sur FUTUR CONNU : validation backtesting")
+        logger.info("  ✓ Données climatiques PAR PROVINCE : Température, Précipitations, Humidité")
+    else:
+        logger.info("=" * 70)
+        logger.info("📊 MODE PRÉDICTION UNIQUEMENT (sans réentraînement)")
+        logger.info("=" * 70)
     logger.info("  ✓ Logging détaillé : trace chaque décision de Tier")
     logger.info("")
 
@@ -1105,12 +1279,111 @@ def train_and_predict():
         use_climate = False
         climate_data = {}
     
-    today       = date.today()
-    target_date = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    today = date.today()
+    
+    # Déterminer la date cible de prédiction
+    if prediction_date is None:
+        # Défaut: prochain mois
+        target_date = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    else:
+        target_date = prediction_date
+    
+    if verbose:
+        logger.info(f"🎯 Prédiction pour: {target_date.strftime('%B %Y')}")
 
     # Nettoyage des prédictions précédentes pour le mois cible
     deleted = Prediction.objects.filter(prediction_date=target_date).delete()
-    logger.info(f"🗑️  Prédictions précédentes supprimées : {deleted[0]}")
+    if verbose:
+        logger.info(f"🗑️  Prédictions précédentes supprimées : {deleted[0]}")
+    
+    # ── MODE PRÉDICTION UNIQUEMENT (sans réentraînement) ─────────────────────────
+    if not train_mode:
+        if verbose:
+            logger.info("\n⚡ Mode prédiction rapide (Tier 4 - Persistence, sans entraînement)")
+        
+        prediction_list = []
+        seen_predictions = set()
+        provinces = list(Province.objects.all())
+        
+        # Récupérer les maladies traitées
+        all_source_diseases = list(
+            ClinicalData.objects.values_list('disease_name', flat=True).distinct()
+        )
+        
+        diseases_to_process = set()
+        disease_mapping_log_local = {}
+        for source_disease in all_source_diseases:
+            consolidated = consolidate_disease_data(source_disease)
+            if consolidated and consolidated in EPIDEMIC_DISEASES:
+                diseases_to_process.add(consolidated)
+                if consolidated not in disease_mapping_log_local:
+                    disease_mapping_log_local[consolidated] = []
+                disease_mapping_log_local[consolidated].append(source_disease)
+        
+        diseases = sorted(list(diseases_to_process))
+        
+        for d_name in diseases:
+            for prov in provinces:
+                # Récupérer zones de santé
+                zones = list(HealthZone.objects.filter(territory__province=prov))
+                if not zones:
+                    continue
+                
+                for zone in zones:
+                    # Tier 4: utiliser dernière valeur connue
+                    last_rec = ClinicalData.objects.filter(
+                        health_zone=zone, disease_name=d_name
+                    ).order_by('-month').first()
+                    
+                    pred_val = float(last_rec.cases_count) if last_rec else 0.0
+                    
+                    # Volatilité: +/- 10% fluctuation basée sur tendance historique
+                    recent_recs = ClinicalData.objects.filter(
+                        health_zone=zone, disease_name=d_name
+                    ).order_by('-month')[:3]
+                    
+                    if recent_recs.count() >= 2:
+                        last_two = list(recent_recs)[:2]
+                        if last_two[0].cases_count != 0:
+                            change_rate = (last_two[1].cases_count - last_two[0].cases_count) / last_two[0].cases_count
+                            volatility = max(-0.2, min(0.2, change_rate))  # Clipper à ±20%
+                            pred_val = pred_val * (1 + volatility)
+                    
+                    pred_val = max(0.0, float(pred_val))
+                    severity = "ALERTE ROUGE" if pred_val > 500 else "VIGILANCE" if pred_val > 150 else "STABLE"
+                    
+                    key = (zone.id, d_name, target_date)
+                    if key not in seen_predictions:
+                        seen_predictions.add(key)
+                        
+                        influence_data = {
+                            "model_used": "Persistence",
+                            "tier": 4,
+                            "reliability": 33.0,
+                            "r2": 0,
+                            "mae": 0,
+                            "rmse": 0,
+                            "weekly_spread_rate": 0,
+                            "attack_angle": severity,
+                            "data_sparse": True,
+                            "mode": "prediction_only"
+                        }
+                        
+                        prediction_list.append(Prediction(
+                            health_zone=zone, disease_name=d_name,
+                            prediction_date=target_date,
+                            predicted_cases=round(pred_val, 1),
+                            influence_factors=influence_data
+                        ))
+        
+        # Sauvegarder les prédictions
+        if prediction_list:
+            Prediction.objects.bulk_create(prediction_list, batch_size=500, ignore_conflicts=True)
+        
+        if verbose:
+            logger.info(f"✓ Mode prédiction: {len(prediction_list)} prédictions créées (Tier 4)")
+        
+        return len(prediction_list)
 
     prediction_list  = []
     seen_predictions = set()
@@ -1714,13 +1987,39 @@ def train_and_predict():
             "performance_metrics": performance_log
         }, f, indent=4)
 
-    logger.info(f"  📄 Rapport : {report_path}")
-    logger.info("=" * 70)
+    if verbose:
+        logger.info(f"  📄 Rapport : {report_path}")
+        logger.info("=" * 70)
+    
+    return len(prediction_list)
 
 
 if __name__ == "__main__":
     logger.info("=" * 70)
-    logger.info("🚀 ENTRAîNEMENT DES MODELES")
+    logger.info("🚀 SYSTÈME DE PRÉDICTION PROGRESSIVE")
     logger.info("=" * 70)
-    train_and_predict()
+    
+    # Vérifier si réentraînement nécessaire
+    retrain = should_retrain()
+    
+    if retrain:
+        logger.info("\n🧠 PHASE 1: ENTRAÎNEMENT DES MODÈLES")
+        logger.info("=" * 70)
+        train_and_predict(train_mode=True, verbose=True)
+        
+        # Mettre à jour métadonnées après entraînement réussi
+        metadata = load_metadata()
+        metadata['last_training_date'] = datetime.now().isoformat()
+        metadata['force_retrain'] = False
+        save_metadata(metadata)
+        logger.info("✓ Métadonnées mises à jour")
+        
+        logger.info("\n🌍 PHASE 2: PRÉDICTIONS PROGRESSIVES (post-entraînement)")
+        logger.info("=" * 70)
+        do_progressive_predictions()
+    
+    else:
+        logger.info("\n📊 PHASE 2: PRÉDICTIONS PROGRESSIVES (sans réentraînement)")
+        logger.info("=" * 70)
+        do_progressive_predictions()
    

@@ -61,6 +61,16 @@ class DiseaseInteractiveView(TemplateView):
         national_preds = self._get_national_predictions(disease_name)
         context['provincial_predictions'] = json.dumps(national_preds)
         
+        # 🎯 GET YEARLY PROGRESSIVE PREDICTIONS
+        yearly_preds = DiseaseAnalyzer.get_yearly_predictions(disease_name, province_name)
+        context['yearly_predictions'] = yearly_preds
+        context['yearly_predictions_json'] = json.dumps(yearly_preds, default=str)
+        
+        # 📊 GET YEARLY PREDICTIONS WITH ZONE DETAILS
+        yearly_zone_preds = DiseaseAnalyzer.get_yearly_predictions_with_zone_details(disease_name, province_name)
+        context['yearly_zone_predictions'] = yearly_zone_preds
+        context['yearly_zone_predictions_json'] = json.dumps(yearly_zone_preds, default=str)
+        
         # Only show detailed analysis if province is selected
         if province_name:
             # Get summary stats
@@ -126,7 +136,9 @@ class DiseaseInteractiveView(TemplateView):
             zone_dist=zone_dist,
             zone_preds=zone_preds,
             pred_data=pred_data,
-            climate_impact=climate_impact_data
+            climate_impact=climate_impact_data,
+            yearly_predictions=yearly_preds,
+            yearly_zone_predictions=yearly_zone_preds
         )
         
         context.update(charts)
@@ -288,7 +300,8 @@ class DiseaseInteractiveView(TemplateView):
     
     def _generate_matplotlib_charts(self, disease_name, province_name=None, timeline_data=None, 
                                    provincial_preds=None, zone_dist=None, zone_preds=None, 
-                                   pred_data=None, climate_impact=None):
+                                   pred_data=None, climate_impact=None, yearly_predictions=None,
+                                   yearly_zone_predictions=None):
         """Generate beautiful matplotlib charts and return as base64 encoded images"""
         charts = {}
         
@@ -882,6 +895,132 @@ class DiseaseInteractiveView(TemplateView):
                 plt.close()
         except Exception as e:
             print(f"Annual chart error: {e}")
+        
+        # 🎯 YEARLY PROGRESSIVE PREDICTIONS CHART
+        try:
+            if yearly_predictions and len(yearly_predictions) > 0:
+                fig, ax = plt.subplots(figsize=(14, 7), facecolor='#0f172a', edgecolor='none')
+                ax.set_facecolor('#1e293b')
+                
+                # Préparer les données
+                years = sorted(yearly_predictions.keys(), key=lambda x: int(x) if x.isdigit() else 0)
+                pred_cases = [yearly_predictions[y]['predicted_cases'] for y in years]
+                reliability = [yearly_predictions[y]['reliability'] for y in years]
+                
+                # Créer un graphique en barres avec les prédictions progressives
+                colors = ['#3b82f6' if r >= 70 else '#f59e0b' if r >= 50 else '#ef4444' for r in reliability]
+                
+                bars = ax.bar(years, pred_cases, color=colors, alpha=0.7, edgecolor='#64748b', linewidth=1.5)
+                
+                # Ajouter les valeurs sur les barres
+                for i, (bar, val, rel) in enumerate(zip(bars, pred_cases, reliability)):
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height,
+                           f'{int(val):,}\n({rel}%)',
+                           ha='center', va='bottom', fontsize=10, color='#e2e8f0', fontweight='bold')
+                
+                ax.set_xlabel('Année de Prédiction', fontsize=13, color='#e2e8f0', fontweight='bold')
+                ax.set_ylabel('Cas Prédits', fontsize=13, color='#e2e8f0', fontweight='bold')
+                ax.set_title(f'Prédictions Progressives par Année - {disease_name}', 
+                           fontsize=15, color='#e2e8f0', fontweight='bold', pad=20)
+                
+                ax.grid(True, alpha=0.2, axis='y', color='#64748b', linestyle='--', linewidth=0.8)
+                ax.set_axisbelow(True)
+                
+                # Styling
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_color('#64748b')
+                ax.spines['bottom'].set_color('#64748b')
+                ax.tick_params(colors='#cbd5e1', labelsize=11)
+                
+                # Légende: Fiabilité
+                from matplotlib.patches import Patch
+                legend_elements = [
+                    Patch(facecolor='#3b82f6', alpha=0.7, edgecolor='#64748b', label='Fiabilité ≥ 70%'),
+                    Patch(facecolor='#f59e0b', alpha=0.7, edgecolor='#64748b', label='Fiabilité 50-70%'),
+                    Patch(facecolor='#ef4444', alpha=0.7, edgecolor='#64748b', label='Fiabilité < 50%')
+                ]
+                ax.legend(handles=legend_elements, loc='upper left', framealpha=0.9, 
+                         facecolor='#1e293b', edgecolor='#64748b', fontsize=10)
+                
+                plt.tight_layout()
+                img_buffer = io.BytesIO()
+                plt.savefig(img_buffer, format='png', facecolor='#0f172a', dpi=100, bbox_inches='tight')
+                img_buffer.seek(0)
+                charts['yearly_predictions'] = base64.b64encode(img_buffer.getvalue()).decode()
+                plt.close()
+        except Exception as e:
+            print(f"Yearly predictions chart error: {e}")
+        
+        # 📊 YEARLY PREDICTIONS WITH ZONE DETAILS CHART (if province selected)
+        try:
+            if yearly_zone_predictions and province_name and len(yearly_zone_predictions) > 0:
+                fig, ax = plt.subplots(figsize=(16, 8), facecolor='#0f172a', edgecolor='none')
+                ax.set_facecolor('#1e293b')
+                
+                # Préparer les données: {year: {zone: {'predicted_cases': ..., 'reliability': ...}}}
+                years = sorted(yearly_zone_predictions.keys())
+                
+                # Collecter les zones uniques
+                all_zones = set()
+                for year_data in yearly_zone_predictions.values():
+                    all_zones.update(year_data.keys())
+                all_zones = sorted(list(all_zones))
+                
+                # Créer des données par zone
+                zone_data = {}
+                for zone in all_zones:
+                    zone_data[zone] = []
+                    for year in years:
+                        if zone in yearly_zone_predictions[year]:
+                            zone_data[zone].append(float(yearly_zone_predictions[year][zone]['predicted_cases']))
+                        else:
+                            zone_data[zone].append(0)
+                
+                # Couleurs pour chaque zone
+                colors_palette = plt.cm.tab20(range(len(all_zones)))
+                
+                # Créer le graphique en barres empilées
+                x = np.arange(len(years))
+                width = 0.8
+                bottom = np.zeros(len(years))
+                
+                for i, zone in enumerate(all_zones):
+                    ax.bar(x, zone_data[zone], width, label=zone, color=colors_palette[i], 
+                          edgecolor='#1e293b', linewidth=0.5)
+                    bottom += np.array(zone_data[zone])
+                
+                # Configuration des axes
+                ax.set_xlabel('Année de Prédiction', fontsize=13, color='#e2e8f0', fontweight='bold')
+                ax.set_ylabel('Cas Prédits par Zone de Santé', fontsize=13, color='#e2e8f0', fontweight='bold')
+                ax.set_title(f'Prédictions Progressives par Année et Zone de Santé - {disease_name} ({province_name})', 
+                           fontsize=15, color='#e2e8f0', fontweight='bold', pad=20)
+                ax.set_xticks(x)
+                ax.set_xticklabels(years)
+                
+                ax.grid(True, alpha=0.2, axis='y', color='#64748b', linestyle='--', linewidth=0.8)
+                ax.set_axisbelow(True)
+                
+                # Styling
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_color('#64748b')
+                ax.spines['bottom'].set_color('#64748b')
+                ax.tick_params(colors='#cbd5e1', labelsize=11)
+                
+                # Légende avec scrolling si nombreuses zones
+                ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1), framealpha=0.9, 
+                         facecolor='#1e293b', edgecolor='#64748b', fontsize=9, ncol=1)
+                
+                plt.tight_layout()
+                img_buffer = io.BytesIO()
+                plt.savefig(img_buffer, format='png', facecolor='#0f172a', dpi=100, bbox_inches='tight')
+                img_buffer.seek(0)
+                charts['yearly_zone_predictions'] = base64.b64encode(img_buffer.getvalue()).decode()
+                plt.close()
+        except Exception as e:
+            print(f"Yearly zone predictions chart error: {e}")
         
         return charts
         """Generate intelligent recommendations based on disease data"""

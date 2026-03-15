@@ -975,42 +975,24 @@ class TaskRunListView(ListView):
 def launch_training_view(request):
     """Lance un entraînement des modèles."""
     if request.method == 'POST':
-        # Vérifier qu'il n'y a pas déjà une tâche en cours
-        pending = TaskRun.objects.filter(task_type='train', status__in=['pending', 'running']).exists()
-        
-        if pending:
-            messages.warning(request, "Un entraînement est déjà en cours. Veuillez attendre.")
-        else:
-            task_run = TaskRunner.run_task_async('train')
-            messages.success(request, f"Entraînement lancé ! (ID: {task_run.id})")
+        task_run = TaskRunner.run_task_async('train')
+        messages.success(request, f"⏳ Entraînement lancé en arrière-plan (ID: {task_run.id}). Consultez l'historique pour voir la progression et les erreurs éventuelles.")
     
     return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:dashboard')))
 
 def launch_ingest_view(request):
     """Lance l'ingestion des données HDX."""
     if request.method == 'POST':
-        # Vérifier qu'il n'y a pas déjà une tâche en cours
-        pending = TaskRun.objects.filter(task_type='ingest', status__in=['pending', 'running']).exists()
-        
-        if pending:
-            messages.warning(request, "Une ingestion est déjà en cours. Veuillez attendre.")
-        else:
-            task_run = TaskRunner.run_task_async('ingest')
-            messages.success(request, f"Ingestion lancée ! (ID: {task_run.id})")
+        task_run = TaskRunner.run_task_async('ingest')
+        messages.success(request, f"⏳ Ingestion lancée en arrière-plan (ID: {task_run.id}). Consultez l'historique pour voir la progression et les erreurs éventuelles.")
     
     return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:dashboard')))
 
 def launch_ingest_climate_view(request):
     """Lance l'ingestion des données climatiques ERA5-Land."""
     if request.method == 'POST':
-        # Vérifier qu'il n'y a pas déjà une tâche en cours
-        pending = TaskRun.objects.filter(task_type='ingest_climate', status__in=['pending', 'running']).exists()
-        
-        if pending:
-            messages.warning(request, "Une ingestion climatique est déjà en cours. Veuillez attendre.")
-        else:
-            task_run = TaskRunner.run_task_async('ingest_climate')
-            messages.success(request, f"Ingestion climatique lancée ! (ID: {task_run.id})")
+        task_run = TaskRunner.run_task_async('ingest_climate')
+        messages.success(request, f"⏳ Ingestion climatique lancée en arrière-plan (ID: {task_run.id}). Consultez l'historique pour voir la progression et les erreurs éventuelles.")
     
     return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:dashboard')))
 

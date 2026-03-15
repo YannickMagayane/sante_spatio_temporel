@@ -79,6 +79,27 @@
         </form>
     </div>
 
+    <!-- Guide d'interprétation -->
+    <div class="glass p-6 rounded-[2.5rem] border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 to-transparent">
+        <h3 class="text-sm font-black uppercase text-cyan-300 tracking-widest mb-4 flex items-center gap-2">
+            <span>💡</span>Comment Lire les Résultats
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-[9px] text-slate-300">
+            <div class="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                <div class="font-bold text-emerald-300 mb-1">✅ Complété</div>
+                <p>La tâche a été exécutée avec succès. Consultez les logs pour voir les détails du processus.</p>
+            </div>
+            <div class="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div class="font-bold text-blue-300 mb-1">⏳ En cours</div>
+                <p>La tâche s'exécute actuellement. La page se rafraîchit automatiquement toutes les 3 secondes.</p>
+            </div>
+            <div class="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                <div class="font-bold text-red-300 mb-1">❌ Échoué</div>
+                <p>Une erreur est intervenue. Dépliez la section "Trace d'Erreur" pour voir les détails.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Historique des tâches -->
     <div class="glass p-6 rounded-[2.5rem] border-white/5 bg-slate-900/50">
         <h2 class="text-[10px] font-black uppercase text-white mb-6 tracking-widest flex items-center gap-2">
@@ -88,7 +109,9 @@
         {% if task_runs %}
         <div class="space-y-4">
             {% for task in task_runs %}
-            <div class="glass p-6 rounded-2xl border-white/5 bg-slate-800/50 hover:bg-slate-800/70 transition-all">
+            <div class="glass p-6 rounded-2xl border-white/5 bg-slate-800/50 hover:bg-slate-800/70 transition-all" 
+                 data-task-id="{{ task.id }}" 
+                 data-task-status="{{ task.status }}">
                 <!-- En-tête de la tâche -->
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
                     <div class="flex-1">
@@ -113,7 +136,7 @@
                     </div>
 
                     <!-- Statut badge -->
-                    <span class="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider
+                    <span data-status-badge class="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider
                         {% if task.status == 'completed' %}
                             bg-emerald-500/20 text-emerald-300 border border-emerald-500/30
                         {% elif task.status == 'running' %}
@@ -140,10 +163,11 @@
                 <div class="mb-4">
                     <div class="flex justify-between items-center mb-2">
                         <span class="text-[9px] font-bold text-slate-400">Progrès</span>
-                        <span class="text-[9px] font-bold text-slate-300">{{ task.progress }}%</span>
+                        <span data-progress-text class="text-[9px] font-bold text-slate-300">{{ task.progress }}%</span>
                     </div>
                     <div class="w-full bg-slate-700/30 rounded-full h-1.5 border border-slate-600/30 overflow-hidden">
                         <div 
+                            data-progress-bar
                             class="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-brand-500 transition-all duration-300"
                             style="width: {{ task.progress|default:0 }}%;"
                         ></div>
@@ -157,22 +181,22 @@
                     <details class="group">
                         <summary class="cursor-pointer text-[9px] font-bold text-blue-300 hover:text-blue-200 uppercase tracking-wider flex items-center gap-2 py-2 px-3 bg-blue-500/10 rounded-lg border border-blue-500/20 group-open:bg-blue-500/20">
                             <span class="group-open:rotate-90 transition-transform inline-block">▶</span>
-                            📋 Sortie ({{ task.output_log|length|stringformat:"d" }} caractères)
+                            📋 Logs Complète ({{ task.output_log|length|stringformat:"d" }} caractères)
                         </summary>
-                        <div class="mt-3 bg-slate-950 rounded-lg p-4 text-[8px] font-mono text-slate-300 overflow-x-auto max-h-64 border border-slate-700/50">
-                            <pre>{{ task.output_log|truncatewords_html:500 }}</pre>
+                        <div class="mt-3 bg-slate-950 rounded-lg p-4 text-[8px] font-mono text-slate-300 overflow-x-auto max-h-96 border border-slate-700/50 whitespace-pre-wrap break-words">
+                            <pre data-output-log>{{ task.output_log }}</pre>
                         </div>
                     </details>
                     {% endif %}
 
                     {% if task.error_log %}
-                    <details class="group">
-                        <summary class="cursor-pointer text-[9px] font-bold text-red-300 hover:text-red-200 uppercase tracking-wider flex items-center gap-2 py-2 px-3 bg-red-500/10 rounded-lg border border-red-500/20 group-open:bg-red-500/20">
+                    <details class="group" data-error-details>
+                        <summary class="cursor-pointer text-[9px] font-bold text-amber-300 hover:text-amber-200 uppercase tracking-wider flex items-center gap-2 py-2 px-3 bg-amber-500/10 rounded-lg border border-amber-500/20 group-open:bg-amber-500/20">
                             <span class="group-open:rotate-90 transition-transform inline-block">▶</span>
-                            ⚠️ Erreurs ({{ task.error_log|length|stringformat:"d" }} caractères)
+                            ℹ️ Infos Supplémentaires ({{ task.error_log|length|stringformat:"d" }} caractères)
                         </summary>
-                        <div class="mt-3 bg-red-950 rounded-lg p-4 text-[8px] font-mono text-red-300 overflow-x-auto max-h-64 border border-red-700/50">
-                            <pre>{{ task.error_log|truncatewords_html:500 }}</pre>
+                        <div class="mt-3 bg-amber-950 rounded-lg p-4 text-[8px] font-mono text-amber-300 overflow-x-auto max-h-96 border border-amber-700/50 whitespace-pre-wrap break-words">
+                            <pre data-error-log>{{ task.error_log }}</pre>
                         </div>
                     </details>
                     {% endif %}
@@ -180,7 +204,7 @@
 
                 <!-- Durée d'exécution -->
                 {% if task.started_at and task.completed_at %}
-                <div class="mt-4 pt-4 border-t border-slate-700/30 text-[9px] text-slate-400">
+                <div class="mt-4 pt-4 border-t border-slate-700/30 text-[9px] text-slate-400" data-duration>
                     ⏱️ Durée: <strong class="text-slate-200">{{ task.started_at|timesince:task.completed_at }}</strong>
                 </div>
                 {% elif task.started_at and task.status == 'running' %}
@@ -204,7 +228,109 @@
 function taskManager() {
     return {
         init() {
-            // Auto-refresh optionnel
+            // Auto-refresh des tâches en cours
+            this.startAutoRefresh();
+        },
+        
+        startAutoRefresh() {
+            // Rafraîchir toutes les 3 secondes si des tâches sont en cours
+            setInterval(() => {
+                const runningTasks = document.querySelectorAll('[data-task-id]');
+                if (runningTasks.length === 0) return;
+                
+                runningTasks.forEach(taskEl => {
+                    const taskId = taskEl.dataset.taskId;
+                    const status = taskEl.dataset.taskStatus;
+                    
+                    // Ne rafraîchir que les tâches en cours ou en attente
+                    if (status !== 'running' && status !== 'pending') return;
+                    
+                    fetch(`/tasks/api/${taskId}/status/`)
+                        .then(r => r.json())
+                        .then(data => this.updateTaskUI(taskEl, data))
+                        .catch(e => console.error('Erreur refresh tâche:', e));
+                });
+            }, 3000); // Rafraîchir toutes les 3 secondes
+        },
+        
+        updateTaskUI(taskEl, data) {
+            // Mettre à jour le badge de statut
+            const statusBadge = taskEl.querySelector('[data-status-badge]');
+            if (statusBadge) {
+                statusBadge.className = this.getStatusClasses(data.status);
+                statusBadge.innerHTML = this.getStatusHTML(data.status);
+            }
+            
+            // Mettre à jour la barre de progression
+            if (data.progress && data.progress > 0) {
+                const progressBar = taskEl.querySelector('[data-progress-bar]');
+                if (progressBar) {
+                    progressBar.style.width = data.progress + '%';
+                }
+                const progressText = taskEl.querySelector('[data-progress-text]');
+                if (progressText) {
+                    progressText.textContent = data.progress + '%';
+                }
+            }
+            
+            // Mettre à jour les logs si disponibles
+            if (data.output_log) {
+                const outputPre = taskEl.querySelector('[data-output-log]');
+                if (outputPre) {
+                    outputPre.textContent = data.output_log;
+                }
+            }
+            
+            if (data.error_log) {
+                const errorPre = taskEl.querySelector('[data-error-log]');
+                if (errorPre) {
+                    errorPre.textContent = data.error_log;
+                }
+                // Afficher automatiquement les erreurs si la tâche a échoué
+                if (data.status === 'failed') {
+                    const errorDetails = taskEl.querySelector('[data-error-details]');
+                    if (errorDetails && !errorDetails.open) {
+                        errorDetails.open = true;
+                    }
+                }
+            }
+            
+            // Mettre à jour les temps
+            if (data.completed_at) {
+                const durationEl = taskEl.querySelector('[data-duration]');
+                if (durationEl) {
+                    const started = new Date(data.started_at);
+                    const completed = new Date(data.completed_at);
+                    const duration = Math.round((completed - started) / 1000);
+                    durationEl.textContent = this.formatDuration(duration);
+                }
+            }
+        },
+        
+        getStatusClasses(status) {
+            const baseClasses = 'px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border';
+            if (status === 'completed') {
+                return baseClasses + ' bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+            } else if (status === 'running') {
+                return baseClasses + ' bg-blue-500/20 text-blue-300 border-blue-500/30 animate-pulse';
+            } else if (status === 'failed') {
+                return baseClasses + ' bg-red-500/20 text-red-300 border-red-500/30';
+            }
+            return baseClasses + ' bg-slate-600/30 text-slate-300 border-slate-500/30';
+        },
+        
+        getStatusHTML(status) {
+            if (status === 'running') return '⏳ En cours...';
+            if (status === 'completed') return '✅ Complété';
+            if (status === 'failed') return '❌ Échoué';
+            return '⏰ En attente';
+        },
+        
+        formatDuration(seconds) {
+            if (seconds < 60) return seconds + 's';
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return mins + 'm ' + secs + 's';
         }
     }
 }

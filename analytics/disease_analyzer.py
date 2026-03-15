@@ -207,3 +207,135 @@ class DiseaseAnalyzer:
             'affected_zones': stats['affected_zones'] or 0,
             'avg_monthly': round(stats['avg_cases'] or 0, 0)
         }
+    
+    @staticmethod
+    def get_yearly_predictions(disease_name, province_name=None):
+        """
+        Récupère les prédictions progressives par année.
+        Retourne un dict avec années comme clés et prédictions pour le mois 1 de l'année suivante.
+        
+        :param disease_name: Nom de la maladie
+        :param province_name: Optionnel, province spécifique
+        :returns: dict {year: {'date': ..., 'predicted_cases': ..., 'reliability': ...}}
+        """
+        from datetime import date
+        
+        # Récupérer toutes les prédictions pour cette maladie, groupées par année
+        preds_qs = Prediction.objects.filter(disease_name=disease_name)
+        
+        if province_name:
+            preds_qs = preds_qs.filter(health_zone__territory__province__name=province_name)
+        
+        # Grouper par year de prediction_date
+        yearly_preds = {}
+        
+        for pred in preds_qs.order_by('prediction_date'):
+            pred_year = pred.prediction_date.year
+            
+            # Sauvegarder avec le format: "2015-01" → prédiction pour 2015-01
+            year_key = f"{pred_year}"
+            
+            if year_key not in yearly_preds:
+                yearly_preds[year_key] = {
+                    'date': pred.prediction_date.strftime('%Y-%m'),
+                    'predicted_cases': 0,
+                    'prediction_count': 0,
+                    'reliability_sum': 0,
+                    'reliability_count': 0
+                }
+            
+            # Accumuler les cases
+            yearly_preds[year_key]['predicted_cases'] += float(pred.predicted_cases or 0)
+            yearly_preds[year_key]['prediction_count'] += 1
+            
+            # Extraire la reliability du JSON
+            try:
+                influence = json.loads(pred.influence_factors) if isinstance(pred.influence_factors, str) else pred.influence_factors
+                reliability = float((influence or {}).get('reliability', 33.0))
+            except:
+                reliability = 33.0
+            
+            yearly_preds[year_key]['reliability_sum'] += reliability
+            yearly_preds[year_key]['reliability_count'] += 1
+        
+        # Calculer les moyennes de reliability et nettoyer les champs temporaires
+        for year_key in yearly_preds:
+            count = yearly_preds[year_key].get('reliability_count', 1)
+            if count > 0:
+                yearly_preds[year_key]['reliability'] = round(
+                    yearly_preds[year_key]['reliability_sum'] / count, 1
+                )
+            else:
+                yearly_preds[year_key]['reliability'] = 33.0
+            
+            # Supprimer les champs temporaires
+            del yearly_preds[year_key]['reliability_sum']
+            del yearly_preds[year_key]['reliability_count']
+        
+        return yearly_preds
+    
+    @staticmethod
+    def get_yearly_predictions_with_zone_details(disease_name, province_name=None):
+        """
+        Récupère les prédictions progressives par année AVEC détails par zone de santé.
+        Retourne un dict imbriqué: {year: {zone_name: {'predicted_cases': ..., 'reliability': ...}}}
+        
+        :param disease_name: Nom de la maladie
+        :param province_name: Optionnel, province spécifique
+        :returns: dict {year: {zone: {'predicted_cases': ..., 'reliability': ..., 'count': ...}}}
+        """
+        from datetime import date
+        
+        # Récupérer toutes les prédictions pour cette maladie
+        preds_qs = Prediction.objects.filter(disease_name=disease_name).select_related('health_zone')
+        
+        if province_name:
+            preds_qs = preds_qs.filter(health_zone__territory__province__name=province_name)
+        
+        # Grouper par année et par zone de santé
+        yearly_zone_preds = {}
+        
+        for pred in preds_qs.order_by('prediction_date', 'health_zone__name'):
+            pred_year = pred.prediction_date.year
+            zone_name = pred.health_zone.name if pred.health_zone else 'Unknown'
+            
+            if pred_year not in yearly_zone_preds:
+                yearly_zone_preds[pred_year] = {}
+            
+            if zone_name not in yearly_zone_preds[pred_year]:
+                yearly_zone_preds[pred_year][zone_name] = {
+                    'predicted_cases': 0,
+                    'count': 0,
+                    'reliability_sum': 0,
+                    'date': pred.prediction_date.strftime('%Y-%m')
+                }
+            
+            # Incrémenter les valeurs
+            yearly_zone_preds[pred_year][zone_name]['predicted_cases'] += float(pred.predicted_cases or 0)
+            yearly_zone_preds[pred_year][zone_name]['count'] += 1
+            
+            # Récupérer la reliability de influence_factors
+            try:
+                influence = json.loads(pred.influence_factors) if isinstance(pred.influence_factors, str) else pred.influence_factors
+                reliability = float(influence.get('reliability', 33.0))
+            except:
+                reliability = 33.0
+            
+            yearly_zone_preds[pred_year][zone_name]['reliability_sum'] += reliability
+        
+        # Calculer les moyennes de reliability
+        for year in yearly_zone_preds:
+            for zone in yearly_zone_preds[year]:
+                count = yearly_zone_preds[year][zone]['count']
+                if count > 0:
+                    yearly_zone_preds[year][zone]['reliability'] = round(
+                        yearly_zone_preds[year][zone]['reliability_sum'] / count, 1
+                    )
+                else:
+                    yearly_zone_preds[year][zone]['reliability'] = 33.0
+                
+                # Supprimer les valeurs temporaires
+                del yearly_zone_preds[year][zone]['reliability_sum']
+                del yearly_zone_preds[year][zone]['count']
+        
+        return yearly_zone_preds

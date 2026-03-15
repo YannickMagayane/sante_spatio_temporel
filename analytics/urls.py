@@ -5,6 +5,7 @@ from .views import (
 )
 from .graph_views import ProvinceAnalysisView, DiseaseDetailView
 from .disease_interactive_view import DiseaseInteractiveView
+from .enhanced_disease_view import EnhancedDiseaseAnalysisView
 
 app_name = 'analytics'
 
@@ -25,5 +26,5 @@ urlpatterns = [
     # Analysis and graphs
     path('analysis/province/', ProvinceAnalysisView.as_view(), name='province_analysis'),
     path('analysis/disease/', DiseaseDetailView.as_view(), name='disease_detail'),
-    path('analysis/disease/interactive/', DiseaseInteractiveView.as_view(), name='disease_interactive'),
+    path('analysis/disease/interactive/', EnhancedDiseaseAnalysisView.as_view(), name='disease_interactive'),
 ]
