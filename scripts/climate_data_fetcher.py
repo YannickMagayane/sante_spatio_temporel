@@ -830,7 +830,7 @@ def fetch_climate_for_all_provinces(year_range=(2020, 2024), output_dir="data/cl
         })
         
         # Remplir les NaN avec interpolation linéaire
-        df = df.fillna(method='ffill').fillna(method='bfill')
+        df = df.ffill().bfill()
         
         logger.info(f"✓ {len(df)} points mensuels extraits de la RDC")
         logger.info(f"   Température: {df['temperature'].min():.2f} à {df['temperature'].max():.2f} K")

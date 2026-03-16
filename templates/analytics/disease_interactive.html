@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load custom_filters %}
 
 {% block title %}{{ disease }}{% if province %} - {{ province }}{% endif %} | Prédictions & Analyse Climatique{% endblock %}
 
@@ -381,17 +382,19 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% with total_pred=zone_predictions|length %}
                         {% for zone in zone_predictions|slice:":15" %}
                         <tr style="border-bottom: 1px solid #334155; background: {% cycle '#1e293b' '#0f172a' %};">
                             <td style="padding: 0.75rem; color: #cbd5e1;">{{ zone.zone_name }}</td>
                             <td style="text-align: right; padding: 0.75rem; color: #60a5fa; font-weight: bold;">{{ zone.predicted_cases|floatformat:0 }}</td>
                             <td style="text-align: center; padding: 0.75rem; color: #a1e34d;">
-                                {% widthratio zone.predicted_cases total_pred 100 %}%
+                                {% if total_predicted_cases > 0 %}
+                                {% widthratio zone.predicted_cases total_predicted_cases 100 %}%
+                                {% else %}
+                                0%
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
-                        {% endwith %}
                     </tbody>
                 </table>
             </div>

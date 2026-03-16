@@ -40,20 +40,18 @@ def fig_to_base64(fig):
 
 def remove_empty_periods(df_data):
     """
-    Smart function to remove EMPTY periods while keeping data continuum.
+    Smart function to remove EMPTY periods while keeping all significant data.
     
-    Removes:
-    - Leading empty periods (2010-2014 if no data)
-    - Trailing empty periods (future empty dates)
-    
-    Keeps:
-    - Empty periods BETWEEN data (forward fill / interpolation)
+    Simply:
+    - Keeps all rows with positive case counts
+    - Fills NaN/zero gaps between data points
+    - Removes trailing NaN periods at the end
     
     Args:
         df_data: DataFrame with 'month' and 'cases_count' columns
     
     Returns:
-        DataFrame with empty edge periods removed, data in middle preserved
+        DataFrame with data gaps filled, maintained chronologically
     """
     if df_data.empty:
         return df_data
@@ -62,22 +60,16 @@ def remove_empty_periods(df_data):
     df['month'] = pd.to_datetime(df['month'])
     df = df.sort_values('month').reset_index(drop=True)
     
-    # Find first and last non-zero, non-empty entries
-    has_data = (df['cases_count'].notna()) & (df['cases_count'] >= 0)
+    # Keep only rows where data exists (not NaN)
+    df = df[df['cases_count'].notna()].copy()
     
-    if not has_data.any():
-        return pd.DataFrame()  # All empty
+    if df.empty:
+        return pd.DataFrame()
     
-    first_idx = has_data.idxmax()
-    last_idx = len(df) - 1 - has_data[::-1].idxmax()
+    # Fill any internal gaps with forward fill then backward fill
+    df['cases_count'] = df['cases_count'].ffill().bfill()
     
-    # Keep only data between first and last non-empty
-    df_trimmed = df.iloc[first_idx:last_idx + 1].copy()
-    
-    # Forward fill NaN/empty values to maintain continuity
-    df_trimmed['cases_count'] = df_trimmed['cases_count'].fillna(method='ffill').fillna(method='bfill')
-    
-    return df_trimmed
+    return df.reset_index(drop=True)
 
 
 class SmartGraphGenerator:
@@ -166,6 +158,7 @@ class SmartGraphGenerator:
     def climate_impact_chart(climate_df, disease_df, disease_name, province_name=None):
         """
         Generate chart showing climate influence on disease patterns.
+        Uses whatever overlapping data exists between climate and disease dates.
         
         Features:
         - Dual Y-axis: Temperature/Precipitation (left) vs Cases (right)
@@ -179,7 +172,7 @@ class SmartGraphGenerator:
             province_name: str or None
         
         Returns:
-            base64 encoded PNG image
+            base64 encoded PNG image or placeholder image
         """
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), facecolor='#0f172a')
         
@@ -187,13 +180,17 @@ class SmartGraphGenerator:
         climate_df = climate_df.copy()
         disease_df = remove_empty_periods(disease_df)
         
+        # Handle column name variations
+        climate_date_col = 'date' if 'date' in climate_df.columns else 'month'
+        
         if climate_df.empty or disease_df.empty:
-            fig.text(0.5, 0.5, 'Données climatiques ou épidémiologiques insuffisantes',
+            fig.text(0.5, 0.5, 
+                    f'Données insuffisantes - Climat: {len(climate_df)} pts | Épidémio: {len(disease_df)} pts',
                     ha='center', va='center', color='#cbd5e1', fontsize=14)
             return fig_to_base64(fig)
         
         # Ensure both dataframes have 'month' as datetime
-        climate_df['month'] = pd.to_datetime(climate_df.get('date', climate_df.get('month')))
+        climate_df['month'] = pd.to_datetime(climate_df.get(climate_date_col, climate_df.get('month')))
         disease_df['month'] = pd.to_datetime(disease_df['month'])
         
         # Find common date range
@@ -201,27 +198,40 @@ class SmartGraphGenerator:
         date_max = min(climate_df['month'].max(), disease_df['month'].max())
         
         # Filter to common range
-        climate_df = climate_df[(climate_df['month'] >= date_min) & (climate_df['month'] <= date_max)]
-        disease_df = disease_df[(disease_df['month'] >= date_min) & (disease_df['month'] <= date_max)]
+        climate_filtered = climate_df[(climate_df['month'] >= date_min) & (climate_df['month'] <= date_max)].copy()
+        disease_filtered = disease_df[(disease_df['month'] >= date_min) & (disease_df['month'] <= date_max)].copy()
+        
+        # Check if there's ANY overlap
+        if climate_filtered.empty or disease_filtered.empty:
+            fig.text(0.5, 0.5, 
+                    f'Pas de chevauchement de dates:\nCalimat: {climate_df["month"].min().date()} à {climate_df["month"].max().date()}\nÉpidémio: {disease_df["month"].min().date()} à {disease_df["month"].max().date()}',
+                    ha='center', va='center', color='#cbd5e1', fontsize=12)
+            return fig_to_base64(fig)
+        
+        # Use filtered data or fall back to showing available data
+        if len(climate_filtered) < 2 and len(climate_df) > 0:
+            # Use all available climate data with available disease data
+            climate_filtered = climate_df
+            disease_filtered = disease_df
         
         # --- Subplot 1: Temperature & Precipitation vs Cases
         ax1.set_facecolor('#1e293b')
         
         # Left axis: Climate data
         color_temp = '#f97316'
-        ax1_temp = ax1.twinx() if 'temperature' in climate_df.columns else ax1
+        ax1_temp = ax1.twinx() if 'temperature' in climate_filtered.columns else ax1
         
-        if 'temperature' in climate_df.columns:
-            ax1_temp.plot(climate_df['month'], climate_df['temperature'], 
+        if 'temperature' in climate_filtered.columns:
+            ax1_temp.plot(climate_filtered['month'], climate_filtered['temperature'], 
                          color=color_temp, linewidth=2.5, marker='o', markersize=3,
                          label='Température', alpha=0.8)
             ax1_temp.set_ylabel('Température (°C)', fontsize=11, color=color_temp, fontweight='bold')
             ax1_temp.tick_params(axis='y', labelcolor=color_temp)
         
-        if 'precipitation' in climate_df.columns:
-            ax1.fill_between(climate_df['month'], climate_df['precipitation'], alpha=0.2,
+        if 'precipitation' in climate_filtered.columns:
+            ax1.fill_between(climate_filtered['month'], climate_filtered['precipitation'], alpha=0.2,
                             color='#3b82f6', label='Précipitations')
-            ax1.plot(climate_df['month'], climate_df['precipitation'], 
+            ax1.plot(climate_filtered['month'], climate_filtered['precipitation'], 
                     color='#3b82f6', linewidth=2, linestyle='--', alpha=0.8)
         
         # Right axis: Cases
@@ -229,7 +239,7 @@ class SmartGraphGenerator:
         ax1_cases = ax1.twinx()
         ax1_cases.spines['right'].set_position(('outward', 60))
         
-        ax1_cases.plot(disease_df['month'], disease_df['cases_count'],
+        ax1_cases.plot(disease_filtered['month'], disease_filtered['cases_count'],
                       color=color_cases, linewidth=2.5, marker='s', markersize=4,
                       label='Cas Confirmés')
         ax1_cases.set_ylabel('Nombre de Cas', fontsize=11, color=color_cases, fontweight='bold')
@@ -249,48 +259,62 @@ class SmartGraphGenerator:
         # --- Subplot 2: Correlation Heatmap
         ax2.set_facecolor('#1e293b')
         
-        # Calculate correlation matrix
-        if len(climate_df) > 1 and len(disease_df) > 1:
-            # Align data
+        # Calculate correlation matrix - merge on month
+        if len(climate_filtered) > 1 and len(disease_filtered) > 1:
             merged = pd.merge(
-                climate_df[['month', 'temperature', 'precipitation', 'humidity']],
-                disease_df[['month', 'cases_count']],
+                climate_filtered[['month'] + [c for c in ['temperature', 'precipitation', 'humidity'] if c in climate_filtered.columns]].copy(),
+                disease_filtered[['month', 'cases_count']].copy(),
                 on='month', how='inner'
             )
             
-            if not merged.empty:
+            if not merged.empty and len(merged) > 2:
                 # Calculate correlations
-                corr_temp = merged['temperature'].corr(merged['cases_count'])
-                corr_precip = merged['precipitation'].corr(merged['cases_count'])
-                corr_humidity = merged['humidity'].corr(merged['cases_count']) if 'humidity' in merged.columns else 0
+                corr_data = {}
+                if 'temperature' in merged.columns:
+                    corr_temp = merged['temperature'].corr(merged['cases_count'])
+                    corr_data['Température'] = float(corr_temp) if not pd.isna(corr_temp) else 0
                 
-                # Create heat map
-                factors = ['Température', 'Précipitations', 'Humidité']
-                correlations = [corr_temp, corr_precip, corr_humidity]
+                if 'precipitation' in merged.columns:
+                    corr_precip = merged['precipitation'].corr(merged['cases_count'])
+                    corr_data['Précipitations'] = float(corr_precip) if not pd.isna(corr_precip) else 0
                 
-                colors_corr = ['#10b981' if c > 0.3 else '#f59e0b' if c > 0 else '#ef4444' for c in correlations]
+                if 'humidity' in merged.columns:
+                    corr_humidity = merged['humidity'].corr(merged['cases_count'])
+                    corr_data['Humidité'] = float(corr_humidity) if not pd.isna(corr_humidity) else 0
                 
-                bars = ax2.barh(factors, correlations, color=colors_corr, edgecolor='#1f2937', linewidth=2)
-                
-                # Add correlation values
-                for bar, corr in zip(bars, correlations):
-                    ax2.text(corr, bar.get_y() + bar.get_height() / 2,
-                            f' {corr:.3f}', va='center', ha='left', color='#e2e8f0',
-                            fontweight='bold', fontsize=11)
-                
-                ax2.axvline(0, color='#64748b', linestyle='-', linewidth=1)
-                ax2.set_xlabel('Coefficient de Corrélation de Pearson', fontsize=11, color='#e2e8f0', fontweight='bold')
-                ax2.set_title('Corrélations: Facteurs Climatiques ↔ Incidence Maladie',
-                             fontsize=12, color='#e2e8f0', fontweight='bold', pad=15)
-                ax2.set_xlim(-1, 1)
-                ax2.grid(True, alpha=0.15, axis='x', color='#64748b', linestyle='--')
-                
-                # Add interpretation text
-                strong_factors = [f for f, c in zip(factors, correlations) if abs(c) > 0.5]
-                if strong_factors:
-                    ax2.text(0.98, 0.05, f'Facteurs forts: {", ".join(strong_factors)}',
-                            transform=ax2.transAxes, ha='right', color='#cbd5e1', fontsize=10,
-                            bbox=dict(boxstyle='round', facecolor='#1e293b', alpha=0.8, edgecolor='#64748b'))
+                if corr_data:
+                    factors = list(corr_data.keys())
+                    correlations = list(corr_data.values())
+                    
+                    colors_corr = ['#10b981' if c > 0.3 else '#f59e0b' if c > 0 else '#ef4444' for c in correlations]
+                    
+                    bars = ax2.barh(factors, correlations, color=colors_corr, edgecolor='#1f2937', linewidth=2)
+                    
+                    # Add correlation values
+                    for bar, corr in zip(bars, correlations):
+                        ax2.text(corr, bar.get_y() + bar.get_height() / 2,
+                                f' {corr:.3f}', va='center', ha='left', color='#e2e8f0',
+                                fontweight='bold', fontsize=11)
+                    
+                    ax2.axvline(0, color='#64748b', linestyle='-', linewidth=1)
+                    ax2.set_xlabel('Coefficient de Corrélation de Pearson', fontsize=11, color='#e2e8f0', fontweight='bold')
+                    ax2.set_title(f'Corrélations: Facteurs Climatiques ↔ Incidence Maladie (n={len(merged)} points communs)',
+                                 fontsize=12, color='#e2e8f0', fontweight='bold', pad=15)
+                    ax2.set_xlim(-1, 1)
+                    ax2.grid(True, alpha=0.15, axis='x', color='#64748b', linestyle='--')
+                    
+                    # Add interpretation text
+                    strong_factors = [f for f, c in corr_data.items() if abs(c) > 0.5]
+                    if strong_factors:
+                        ax2.text(0.98, 0.05, f'Facteurs forts: {", ".join(strong_factors)}',
+                                transform=ax2.transAxes, ha='right', color='#cbd5e1', fontsize=10,
+                                bbox=dict(boxstyle='round', facecolor='#1e293b', alpha=0.8, edgecolor='#64748b'))
+                else:
+                    ax2.text(0.5, 0.5, 'Pas assez de données communes pour calculer les corrélations',
+                            ha='center', va='center', transform=ax2.transAxes, color='#cbd5e1', fontsize=11)
+            else:
+                ax2.text(0.5, 0.5, 'Pas de dates communes entre climat et épidémio',
+                        ha='center', va='center', transform=ax2.transAxes, color='#cbd5e1', fontsize=11)
         
         # Spines
         for spine in ax2.spines.values():

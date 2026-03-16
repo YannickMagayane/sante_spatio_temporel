@@ -405,7 +405,7 @@ def clean_clinical_data(df, min_variance_threshold=10.0, min_coverage=0.60):
     
     # Remplir les NaN aux extrémités avec la valeur la plus proche
     if df_full['cases_count'].isna().any():
-        df_full['cases_count'] = df_full['cases_count'].fillna(method='bfill').fillna(method='ffill')
+        df_full['cases_count'] = df_full['cases_count'].bfill().ffill()
     
     # Assurer NON-NÉGATIF
     df_full['cases_count'] = df_full['cases_count'].clip(lower=0.0)

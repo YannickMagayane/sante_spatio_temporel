@@ -7,10 +7,14 @@ from .models import HealthZone, ClinicalData, Prediction, TaskRun
 from django.db.models import Sum, Avg, Max, F
 import os
 import json
+import logging
+from pathlib import Path
 import folium
 from folium.plugins import HeatMap
 from .intelligence import EpidemicContextualizer
 from .task_runner import TaskRunner
+
+logger = logging.getLogger(__name__)
 
 class DashboardView(TemplateView):
     template_name = "analytics/dashboard.html"
@@ -973,10 +977,33 @@ class TaskRunListView(ListView):
         return TaskRun.objects.all().order_by('-created_at')
 
 def launch_training_view(request):
-    """Lance un entraînement des modèles."""
+    """Lance un entraînement COMPLET des modèles."""
     if request.method == 'POST':
+        # Force le réentraînement en mettant à jour le flag dans les métadonnées
+        metadata_file = Path("/app/models/training_metadata.json")
+        
+        try:
+            # Charger les métadonnées existantes
+            if metadata_file.exists():
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+            else:
+                metadata = {}
+            
+            # Mettre le flag force_retrain à True pour forcer un réentraînement complet
+            metadata['force_retrain'] = True
+            
+            # Sauvegarder les métadonnées
+            metadata_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            logger.info("✓ Flag force_retrain activé - l'entraînement sera complet")
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour des métadonnées: {e}")
+        
         task_run = TaskRunner.run_task_async('train')
-        messages.success(request, f"⏳ Entraînement lancé en arrière-plan (ID: {task_run.id}). Consultez l'historique pour voir la progression et les erreurs éventuelles.")
+        messages.success(request, f"⏳ RE-ENTRAÎNEMENT complet lancé en arrière-plan (ID: {task_run.id}). Cela peut prendre plusieurs minutes. Consultez l'historique pour voir la progression et les erreurs éventuelles.")
     
     return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:dashboard')))
 

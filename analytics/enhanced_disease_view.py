@@ -45,6 +45,7 @@ class EnhancedDiseaseAnalysisView(TemplateView):
         context['climate_impact'] = climate_impact
         
         # Generate smart graphs
+        logger.info(f"DEBUG: Data before chart generation - hist:{len(historical_df)} rows, climate:{len(climate_df)} rows, has_forecast:{bool(forecast_data)}")
         charts = self._generate_smart_charts(
             disease_name=disease_name,
             province_name=province_name,
@@ -52,12 +53,16 @@ class EnhancedDiseaseAnalysisView(TemplateView):
             forecast_data=forecast_data,
             climate_df=climate_df
         )
+        logger.info(f"DEBUG: Charts generated: {list(charts.keys())}")
         context.update(charts)
         
         # Get zone-level predictions
         if province_name:
             zone_preds = self._get_zone_predictions(disease_name, province_name)
             context['zone_predictions'] = zone_preds
+            # Calculate total for percentage display
+            total_pred = sum(z.get('predicted_cases', 0) for z in zone_preds) if zone_preds else 0
+            context['total_predicted_cases'] = total_pred
         
         # Get recommendations
         context['recommendations'] = self._get_recommendations(disease_name, province_name, forecast_data)
@@ -252,33 +257,50 @@ class EnhancedDiseaseAnalysisView(TemplateView):
         charts = {}
         gen = SmartGraphGenerator()
         
+        logger.info(f"CHART GEN START: hist_empty={historical_df.empty}, hist_len={len(historical_df)}, forecast={bool(forecast_data)}")
+        logger.info(f"  hist_cols={list(historical_df.columns) if not historical_df.empty else 'N/A'}")
+        logger.info(f"  climate_empty={climate_df.empty}, climate_len={len(climate_df)}, climate_cols={list(climate_df.columns)}")
+        
         try:
             # 1. Monthly forecast chart
             if not historical_df.empty and forecast_data:
+                logger.info(f"Generating monthly_forecast chart...")
                 charts['monthly_forecast'] = gen.monthly_forecast_chart(
                     historical_df, forecast_data, disease_name
                 )
+                logger.info(f"✓ monthly_forecast generated")
+            else:
+                logger.info(f"SKIP monthly_forecast: hist_empty={historical_df.empty}, has_forecast={bool(forecast_data)}")
         except Exception as e:
-            logger.error(f"Monthly forecast chart error: {e}")
+            logger.error(f"Monthly forecast chart error: {e}", exc_info=True)
         
         try:
             # 2. Climate impact chart
             if not historical_df.empty and not climate_df.empty:
+                logger.info(f"Generating climate_impact chart...")
                 charts['climate_impact'] = gen.climate_impact_chart(
                     climate_df, historical_df, disease_name, province_name
                 )
+                logger.info(f"✓ climate_impact generated")
+            else:
+                logger.info(f"SKIP climate_impact: hist_empty={historical_df.empty}, climate_empty={climate_df.empty}")
         except Exception as e:
-            logger.error(f"Climate impact chart error: {e}")
+            logger.error(f"Climate impact chart error: {e}", exc_info=True)
         
         try:
             # 3. With/Without climate comparison
             if not historical_df.empty:
+                logger.info(f"Generating climate_comparison chart...")
                 charts['climate_comparison'] = gen.comparison_with_without_climate(
                     historical_df, climate_df, disease_name, province_name
                 )
+                logger.info(f"✓ climate_comparison generated")
+            else:
+                logger.info(f"SKIP climate_comparison: hist_empty={historical_df.empty}")
         except Exception as e:
-            logger.error(f"Climate comparison chart error: {e}")
+            logger.error(f"Climate comparison chart error: {e}", exc_info=True)
         
+        logger.info(f"CHART GEN END: generated {list(charts.keys())}")
         return charts
     
     def _get_recommendations(self, disease_name, province_name, forecast_data):
