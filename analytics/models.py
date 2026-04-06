@@ -161,12 +161,16 @@ class TaskRun(models.Model):
         ('running', 'En cours'),
         ('completed', 'Complété'),
         ('failed', 'Échoué'),
+        ('stopped', 'Arrêté'),
     ]
     
     task_type = models.CharField(_("Type de tâche"), max_length=20, choices=TASK_TYPE_CHOICES)
     status = models.CharField(_("Statut"), max_length=20, choices=STATUS_CHOICES, default='pending')
     progress = models.IntegerField(_("Progrès (%)"), default=0)
-    
+
+    # champ pour stocker le PID du processus (pour pouvoir l'arrêter)
+    process_id = models.IntegerField(_("PID du processus"), null=True, blank=True)
+
     started_at = models.DateTimeField(_("Démarrage"), null=True, blank=True)
     completed_at = models.DateTimeField(_("Fin"), null=True, blank=True)
     

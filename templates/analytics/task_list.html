@@ -135,27 +135,44 @@
                         </div>
                     </div>
 
-                    <!-- Statut badge -->
-                    <span data-status-badge class="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider
-                        {% if task.status == 'completed' %}
-                            bg-emerald-500/20 text-emerald-300 border border-emerald-500/30
-                        {% elif task.status == 'running' %}
-                            bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse
-                        {% elif task.status == 'failed' %}
-                            bg-red-500/20 text-red-300 border border-red-500/30
-                        {% else %}
-                            bg-slate-600/30 text-slate-300 border border-slate-500/30
-                        {% endif %}">
-                        {% if task.status == 'running' %}
-                            ⏳ En cours...
-                        {% elif task.status == 'completed' %}
-                            ✅ Complété
-                        {% elif task.status == 'failed' %}
-                            ❌ Échoué
-                        {% else %}
-                            ⏰ En attente
+                    <!-- Actions: Statut + Arrêt -->
+                    <div class="flex items-center gap-2">
+                        <!-- Statut badge -->
+                        <span data-status-badge class="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider
+                            {% if task.status == 'completed' %}
+                                bg-emerald-500/20 text-emerald-300 border border-emerald-500/30
+                            {% elif task.status == 'running' %}
+                                bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse
+                            {% elif task.status == 'failed' %}
+                                bg-red-500/20 text-red-300 border border-red-500/30
+                            {% elif task.status == 'stopped' %}
+                                bg-amber-500/20 text-amber-300 border border-amber-500/30
+                            {% else %}
+                                bg-slate-600/30 text-slate-300 border border-slate-500/30
+                            {% endif %}">
+                            {% if task.status == 'running' %}
+                                ⏳ En cours...
+                            {% elif task.status == 'completed' %}
+                                ✅ Complété
+                            {% elif task.status == 'failed' %}
+                                ❌ Échoué
+                            {% elif task.status == 'stopped' %}
+                                🛑 Arrêté
+                            {% else %}
+                                ⏰ En attente
+                            {% endif %}
+                        </span>
+
+                        <!-- Bouton Arrêt (seulement si en cours ET avec un PID) -->
+                        {% if task.status == 'running' and task.process_id %}
+                        <form method="post" action="{% url 'analytics:stop_task' task.id %}" class="inline" onsubmit="return confirm('Arrêter cette tâche en cours ?\\n\\nCela enverra un signal d\'arrêt au processus.');">
+                            {% csrf_token %}
+                            <button type="submit" class="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 text-[9px] font-black uppercase rounded-lg border border-red-500/30 transition-all">
+                                🛑 Arrêter
+                            </button>
+                        </form>
                         {% endif %}
-                    </span>
+                    </div>
                 </div>
 
                 <!-- Barre de progression -->
@@ -260,7 +277,17 @@ function taskManager() {
                 statusBadge.className = this.getStatusClasses(data.status);
                 statusBadge.innerHTML = this.getStatusHTML(data.status);
             }
-            
+
+            // Gestion du bouton d'arrêt (cacher si tâche pas en cours ou pas de PID)
+            const stopButton = taskEl.querySelector('form[action*="/stop/"]');
+            if (stopButton) {
+                if (data.status === 'running' && data.process_id) {
+                    stopButton.style.display = 'inline';
+                } else {
+                    stopButton.style.display = 'none';
+                }
+            }
+
             // Mettre à jour la barre de progression
             if (data.progress && data.progress > 0) {
                 const progressBar = taskEl.querySelector('[data-progress-bar]');
@@ -272,7 +299,7 @@ function taskManager() {
                     progressText.textContent = data.progress + '%';
                 }
             }
-            
+
             // Mettre à jour les logs si disponibles
             if (data.output_log) {
                 const outputPre = taskEl.querySelector('[data-output-log]');
@@ -280,7 +307,7 @@ function taskManager() {
                     outputPre.textContent = data.output_log;
                 }
             }
-            
+
             if (data.error_log) {
                 const errorPre = taskEl.querySelector('[data-error-log]');
                 if (errorPre) {
@@ -294,7 +321,7 @@ function taskManager() {
                     }
                 }
             }
-            
+
             // Mettre à jour les temps
             if (data.completed_at) {
                 const durationEl = taskEl.querySelector('[data-duration]');
@@ -315,14 +342,17 @@ function taskManager() {
                 return baseClasses + ' bg-blue-500/20 text-blue-300 border-blue-500/30 animate-pulse';
             } else if (status === 'failed') {
                 return baseClasses + ' bg-red-500/20 text-red-300 border-red-500/30';
+            } else if (status === 'stopped') {
+                return baseClasses + ' bg-amber-500/20 text-amber-300 border-amber-500/30';
             }
             return baseClasses + ' bg-slate-600/30 text-slate-300 border-slate-500/30';
         },
-        
+
         getStatusHTML(status) {
             if (status === 'running') return '⏳ En cours...';
             if (status === 'completed') return '✅ Complété';
             if (status === 'failed') return '❌ Échoué';
+            if (status === 'stopped') return '🛑 Arrêté';
             return '⏰ En attente';
         },
         

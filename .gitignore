@@ -9,14 +9,15 @@ build/
 *.egg
 venv/
 .venv/
-
+.claude/
+.scripts_archive/
 # ======================
 # Environment & Secrets
 # ======================
 .env
 .env.*
 *.env
-
+.docs/*
 # API Keys (CRITICAL — NEVER commit)
 compose/cle_api/
 
@@ -77,6 +78,4 @@ _bmad-output/
 # ======================
 !README_MAIN.md
 !README.md
-!docs/
-!docs/*.md
 !.gitignore

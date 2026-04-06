@@ -97,8 +97,8 @@ class DiseaseAnalyzer:
                 cases = clinical['total'] or 0
                 if cases > 0:
                     climate_disease_pairs.append({
-                        'temperature': clim.temperature - 273.15,  # K to C
-                        'precipitation': clim.precipitation,
+                        'temperature': clim.temperature,  # Already in Celsius
+                        'precipitation': clim.precipitation,  # Already in mm
                         'humidity': clim.humidity,
                         'cases': cases
                     })
@@ -146,8 +146,8 @@ class DiseaseAnalyzer:
             
             if latest:
                 result['current_conditions'] = {
-                    'temperature': round(latest.temperature - 273.15, 1),
-                    'precipitation': round(latest.precipitation, 3),
+                    'temperature': round(latest.temperature, 1),  # Already Celsius
+                    'precipitation': round(latest.precipitation, 1),  # Already mm
                     'humidity': round(latest.humidity, 1)
                 }
             
@@ -339,3 +339,156 @@ class DiseaseAnalyzer:
                 del yearly_zone_preds[year][zone]['count']
         
         return yearly_zone_preds
+
+    @staticmethod
+    def get_recurrence_percentage(health_zone, disease_name):
+        """
+        Calcule le pourcentage de récurrence (présence) d'une maladie dans une zone de santé.
+
+        Méthode statistique :
+        - Période totale = tous les mois entre la première et la dernière donnée DISPONIBLE
+        - Si des mois sont manquants dans la base, on les estime comme "non occurrencs" (0 cas)
+        - Cela évite des faux 100% quand seuls les mois avec cas sont enregistrés
+
+        :param health_zone: Objet HealthZone
+        :param disease_name: Nom de la maladie
+        :returns: dict avec 'percentage', 'active_months', 'total_months_in_period', 'data_months',
+                  'first_date', 'last_date', 'completeness', 'message'
+        """
+        from django.db.models import Count, Min, Max, Sum
+        from datetime import datetime
+
+        # Récupérer toutes les données cliniques pour cette zone et maladie
+        qs = ClinicalData.objects.filter(
+            health_zone=health_zone,
+            disease_name=disease_name
+        )
+
+        # Nombre d'enregistrements disponibles
+        data_months = qs.count()
+
+        if data_months == 0:
+            return {
+                'percentage': 0.0,
+                'active_months': 0,
+                'total_months_in_period': 0,
+                'data_months': 0,
+                'completeness': 0.0,
+                'first_date': None,
+                'last_date': None,
+                'message': "⚠️ Aucune donnée historique disponible"
+            }
+
+        # Compter les mois avec des cas > 0 (mois actifs) - PARMI LES DONNÉES DISPONIBLES
+        active_months_from_data = qs.filter(cases_count__gt=0).count()
+
+        # Obtenir la période couverte (première et dernière dates disponibles)
+        dates = qs.aggregate(first=Min('month'), last=Max('month'))
+        first_date = dates['first']
+        last_date = dates['last']
+
+        # Calculer le nombre total de mois dans la période calendaire
+        if first_date and last_date:
+            total_months_in_period = (last_date.year - first_date.year) * 12 + (last_date.month - first_date.month) + 1
+        else:
+            total_months_in_period = data_months
+
+        # Estimer les mois manquants : on suppose que les mois non enregistrés sont des mois avec 0 cas
+        missing_months = total_months_in_period - data_months
+
+        # Nombre total de mois actifs = actifs parmi les données + (certains manquants pourraient être actifs, mais par prudence on les compte comme inactifs)
+        # Par défaut, on considère que les mois manquants sont des mois sans cas (hypothèse conservatrice)
+        estimated_active_months = active_months_from_data  # on ne rajoute pas d'actifs hypothétiques
+
+        # Calculer le pourcentage de récurrence sur la période totale
+        percentage = round((estimated_active_months / total_months_in_period) * 100, 1) if total_months_in_period > 0 else 0.0
+
+        # Calculer le taux de complétude des données
+        completeness = round((data_months / total_months_in_period) * 100, 1) if total_months_in_period > 0 else 0.0
+
+        # Générer un message interprétatif avec contexte de complétude
+        if completeness < 70:
+            completeness_msg = f"⚠️ Données incomplètes ({completeness}% de la période)"
+        else:
+            completeness_msg = f"✅ Données suffisantes ({completeness}% de la période)"
+
+        if percentage >= 80:
+            message = f"{completeness_msg} - RÉCURRENCE ÉLEVÉE ({percentage}%) - Maladie très persistante"
+        elif percentage >= 60:
+            message = f"{completeness_msg} - RÉCURRENCE MODÉRÉE ({percentage}%) - Présence fréquente"
+        elif percentage >= 40:
+            message = f"{completeness_msg} - RÉCURRENCE FAIBLE ({percentage}%) - Apparitions occasionnelles"
+        elif percentage >= 20:
+            message = f"{completeness_msg} - RÉCURRENCE TRÈS FAIBLE ({percentage}%) - Maladie sporadique"
+        else:
+            message = f"{completeness_msg} - MALADIE RARE ({percentage}%) - Quasi-absence historique"
+
+        return {
+            'percentage': percentage,
+            'active_months': estimated_active_months,
+            'total_months_in_period': total_months_in_period,
+            'data_months': data_months,
+            'completeness': completeness,
+            'first_date': first_date,
+            'last_date': last_date,
+            'message': message
+        }
+
+    @staticmethod
+    def get_disease_recurrence_summary(disease_name, province_name=None):
+        """
+        Calcule un résumé de récurrence pour une maladie à l'échelle des zones.
+
+        :param disease_name: Nom de la maladie
+        :param province_name: Optionnel, province spécifique
+        :returns: dict avec 'avg_recurrence', 'zones_count', 'max_recurrence', 'min_recurrence', 'zones_detail'
+        """
+        from django.db.models import Count, Sum, Avg, Max, Min, Q, FloatField
+        from django.db.models.functions import Cast
+
+        # Base queryset: zones with clinical data for this disease
+        zones_qs = HealthZone.objects.filter(
+            clinicaldata__disease_name=disease_name
+        )
+        if province_name:
+            zones_qs = zones_qs.filter(territory__province__name=province_name)
+
+        # Distinct zones
+        zones_qs = zones_qs.distinct()
+
+        # Annoter chaque zone avec ses statistiques de récurrence
+        zones_with_stats = zones_qs.annotate(
+            total_months=Count('clinicaldata', filter=Q(clinicaldata__disease_name=disease_name), distinct=True),
+            active_months=Count('clinicaldata', filter=Q(clinicaldata__disease_name=disease_name, clinicaldata__cases_count__gt=0), distinct=True)
+        ).filter(total_months__gt=0)
+
+        # Calculer le pourcentage par zone en utilisant la méthode corrigée
+        zones_detail = []
+        percentages = []
+
+        # Limiter à 100 zones pour performance
+        for zone in zones_with_stats[:100]:
+            recurrence_data = DiseaseAnalyzer.get_recurrence_percentage(zone, disease_name)
+            pct = recurrence_data['percentage']
+            percentages.append(pct)
+            zones_detail.append({
+                'zone_name': zone.name,
+                'province': zone.province.name if zone.province else 'N/A',
+                'percentage': pct,
+                'active_months': recurrence_data['active_months'],
+                'total_months_in_period': recurrence_data['total_months_in_period'],
+                'completeness': recurrence_data['completeness']
+            })
+
+        # Calculer les moyennes
+        avg_recurrence = round(sum(percentages) / len(percentages), 1) if percentages else 0.0
+        max_recurrence = round(max(percentages), 1) if percentages else 0.0
+        min_recurrence = round(min(percentages), 1) if percentages else 0.0
+
+        return {
+            'avg_recurrence': avg_recurrence,
+            'zones_count': len(percentages),
+            'max_recurrence': max_recurrence,
+            'min_recurrence': min_recurrence,
+            'zones_detail': sorted(zones_detail, key=lambda x: x['percentage'], reverse=True)[:20]  # Top 20
+        }

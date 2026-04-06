@@ -47,3 +47,10 @@ python-dotenv>=1.0.0
 tqdm>=4.66.0
 scikit-learn>=1.4.0
 hdx-python-api>=6.0.0
+
+# Jupyter Notebooks
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+nbconvert>=7.0.0
+ipykernel>=6.25.0
+

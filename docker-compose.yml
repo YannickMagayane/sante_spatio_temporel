@@ -37,12 +37,44 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports:
+      - "8001:8000"  # Accès direct sans Traefik (pour debug)
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.health-app.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.health-app.rule=Host(`health.localhost`) && PathPrefix(`/`)"
       - "traefik.http.routers.health-app.entrypoints=web"
+      - "traefik.http.routers.health-app.priority=20"
       - "traefik.http.services.health-app.loadbalancer.server.port=8000"
-      - "traefik.docker.network=health_web"
+      - "traefik.docker.network=web"
+    networks:
+      - web
+    depends_on:
+      - traefik
+      - db
+    restart: unless-stopped
+
+  jupyter:
+    build:
+      context: .
+      dockerfile: ./compose/app/Dockerfile
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
+    volumes:
+      - .:/app
+      - ./notebooks:/app/notebooks
+      - ./compose/cle_api/.cdsapirc:/root/.cdsapirc:ro
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - JUPYTER_ENABLE_LAB=yes
+    ports:
+      - "8888:8888"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jupyter.rule=PathPrefix(`/jupyter`)"
+      - "traefik.http.routers.jupyter.entrypoints=web"
+      - "traefik.http.services.jupyter.loadbalancer.server.port=8888"
+      - "traefik.docker.network=web"
     networks:
       - web
     depends_on:

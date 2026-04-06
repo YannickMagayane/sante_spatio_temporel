@@ -24,4 +24,4 @@ echo "🔍 Préparation de la veille sanitaire (démarrage différé)..."
 
 # 4. Lancement du serveur Django sur le Dashboard Premium
 echo "💻 Dashboard disponible sur http://health.localhost:8000"
-exec python manage.py runserver 0.0.0.0:8000
+exec python manage.py runserver 0.0.0.0:8000 --noreload

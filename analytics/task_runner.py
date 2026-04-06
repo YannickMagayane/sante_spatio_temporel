@@ -73,9 +73,9 @@ class TaskRunner:
     def _train_models(task_run: TaskRun):
         """Entraîner les modèles."""
         logger.info(f"[Task {task_run.id}] Démarrage de l'entraînement des modèles...")
-        
+
         script_path = TaskRunner.SCRIPTS_DIR / "train_models.py"
-        
+
         try:
             # Utiliser subprocess pour exécuter le script
             process = subprocess.Popen(
@@ -85,24 +85,32 @@ class TaskRunner:
                 text=True,
                 cwd="/app"
             )
-            
+
+            # Enregistrer le PID pour pouvoir arrêter le processus
+            task_run.process_id = process.pid
+            task_run.save()
+
             # Capturer la sortie
             stdout, _ = process.communicate()
-            
+
+            # Effacer le PID car le processus est terminé
+            task_run.process_id = None
+            task_run.save()
+
             task_run.output_log = stdout
-            
+
             # Vérifier si des erreurs critiques sont présentes dans les logs
             is_error = (
-                process.returncode != 0 and 
-                stdout and 
+                process.returncode != 0 and
+                stdout and
                 ('ERROR' in stdout or 'Traceback' in stdout or 'Exception' in stdout)
             )
-            
+
             if is_error:
                 raise Exception(f"Script retourné code {process.returncode}\n{stdout[-1000:]}")
-            
+
             logger.info(f"[Task {task_run.id}] Entraînement complété")
-            
+
         except Exception as e:
             logger.error(f"[Task {task_run.id}] Erreur entraînement: {e}")
             raise
@@ -111,9 +119,9 @@ class TaskRunner:
     def _ingest_hdx_data(task_run: TaskRun):
         """Injecter les données HDX."""
         logger.info(f"[Task {task_run.id}] Démarrage de l'ingestion HDX...")
-        
+
         script_path = TaskRunner.SCRIPTS_DIR / "ingest_hdx.py"
-        
+
         try:
             # Utiliser subprocess pour exécuter le script
             process = subprocess.Popen(
@@ -123,24 +131,32 @@ class TaskRunner:
                 text=True,
                 cwd="/app"
             )
-            
+
+            # Enregistrer le PID pour pouvoir arrêter le processus
+            task_run.process_id = process.pid
+            task_run.save()
+
             # Capturer la sortie
             stdout, _ = process.communicate()
-            
+
+            # Effacer le PID car le processus est terminé
+            task_run.process_id = None
+            task_run.save()
+
             task_run.output_log = stdout
-            
+
             # Vérifier si des erreurs critiques sont présentes dans les logs
             is_error = (
-                process.returncode != 0 and 
-                stdout and 
+                process.returncode != 0 and
+                stdout and
                 ('ERROR' in stdout or 'Traceback' in stdout or 'Exception' in stdout)
             )
-            
+
             if is_error:
                 raise Exception(f"Script retourné code {process.returncode}\n{stdout[-1000:]}")
-            
+
             logger.info(f"[Task {task_run.id}] Ingestion complétée")
-            
+
         except Exception as e:
             logger.error(f"[Task {task_run.id}] Erreur ingestion: {e}")
             raise
@@ -149,9 +165,9 @@ class TaskRunner:
     def _ingest_climate_data(task_run: TaskRun):
         """Injecter les données climatiques ERA5-Land."""
         logger.info(f"[Task {task_run.id}] Démarrage de l'ingestion climatique...")
-        
+
         script_path = TaskRunner.SCRIPTS_DIR / "ingest_hdx.py"
-        
+
         try:
             # Utiliser subprocess avec l'argument --climate-only
             process = subprocess.Popen(
@@ -161,24 +177,32 @@ class TaskRunner:
                 text=True,
                 cwd="/app"
             )
-            
+
+            # Enregistrer le PID pour pouvoir arrêter le processus
+            task_run.process_id = process.pid
+            task_run.save()
+
             # Capturer la sortie
             stdout, _ = process.communicate()
-            
+
+            # Effacer le PID car le processus est terminé
+            task_run.process_id = None
+            task_run.save()
+
             task_run.output_log = stdout
-            
+
             # Vérifier si des erreurs critiques sont présentes dans les logs
             is_error = (
-                process.returncode != 0 and 
-                stdout and 
+                process.returncode != 0 and
+                stdout and
                 ('ERROR' in stdout or 'Traceback' in stdout or 'Exception' in stdout)
             )
-            
+
             if is_error:
                 raise Exception(f"Script retourné code {process.returncode}\n{stdout[-1000:]}")
-            
+
             logger.info(f"[Task {task_run.id}] Ingestion climatique complétée")
-            
+
         except Exception as e:
             logger.error(f"[Task {task_run.id}] Erreur ingestion climatique: {e}")
             raise

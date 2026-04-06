@@ -479,11 +479,10 @@ class DiseaseDetailView(TemplateView):
             'affected_zones': global_stats['affected_zones'] or 0,
         }
         
-        # Generate Chart.js JSON data
-        context['timeline_data_json'] = self._get_timeline_data_json(disease_name, province_name)
-        context['province_comparison_json'] = self._get_province_comparison_json(disease_name)
-        context['zones_distribution_json'] = self._get_zones_distribution_json(disease_name, province_name)
-        context['prediction_data_json'] = self._get_prediction_data_json(disease_name, province_name)
+        # Add matplotlib graphs
+        context['timeline_graph'] = self._generate_timeline_graph(disease_name, province_name)
+        context['province_comparison_graph'] = self._generate_province_comparison_graph(disease_name)
+        context['prediction_with_history_graph'] = self._generate_prediction_with_history_graph(disease_name, province_name)
         
         # Province-level analysis (if selected)
         if province_name:
@@ -497,6 +496,12 @@ class DiseaseDetailView(TemplateView):
                 'territory_breakdown_json': json.dumps({'labels': [], 'cases': []}),
                 'monthly_trend_json': json.dumps({'labels': [], 'cases': []})
             }
+        
+        # Add matplotlib graphs
+        context['learning_curve'] = self._generate_learning_curve(disease_name, province_name)
+        context['distribution_graph'] = self._generate_distribution_graph(disease_name, province_name)
+        context['seasonality_graph'] = self._generate_seasonality_graph(disease_name, province_name)
+        context['zone_performance'] = self._generate_zone_performance_graph(disease_name, province_name)
         
         return context
     
@@ -883,5 +888,353 @@ class DiseaseDetailView(TemplateView):
             trend = "↑ HAUSSE" if df_actual['cases'].iloc[-1] > df_actual['cases'].iloc[0] else "↓ BAISSE"
             ax.text(0.02, 0.95, f'Tendance: {trend}', transform=ax.transAxes, 
                    fontsize=11, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        return generate_graph_base64(fig)
+    
+    def _generate_learning_curve(self, disease_name, province_name=None):
+        """Generate learning curve showing model improvement over time"""
+        if province_name:
+            predictions = Prediction.objects.filter(
+                disease_name=disease_name,
+                health_zone__territory__province__name=province_name
+            ).order_by('prediction_date')
+        else:
+            predictions = Prediction.objects.filter(
+                disease_name=disease_name
+            ).order_by('prediction_date')
+        
+        if not predictions.exists() or predictions.count() < 1:
+            return None
+        
+        # Group by prediction date and calculate average R²
+        from django.db.models import Value
+        from django.db.models.functions import Cast
+        
+        pred_list = list(predictions.values('prediction_date'))
+        unique_dates = []
+        for p in pred_list:
+            if p['prediction_date'] not in unique_dates:
+                unique_dates.append(p['prediction_date'])
+        
+        dates = []
+        accuracies = []
+        
+        for date in unique_dates:
+            date_preds = predictions.filter(prediction_date=date)
+            r2_values = []
+            for pred in date_preds:
+                factors = pred.influence_factors or {}
+                r2 = factors.get('r2', 0.5)
+                r2_values.append(r2 * 100)
+            
+            if r2_values:
+                avg_r2 = np.mean(r2_values)
+                dates.append(date)
+                accuracies.append(avg_r2)
+        
+        if len(dates) < 1:
+            return None
+        
+        fig, ax = plt.subplots(figsize=(12, 5), facecolor='white')
+        ax.plot(dates, accuracies, linewidth=3, marker='o', color='#0ea5e9', markersize=10, label='Score moyen du modèle', zorder=3)
+        ax.fill_between(dates, accuracies, alpha=0.2, color='#0ea5e9')
+        
+        # Add R² values on each point
+        for i, (date, acc) in enumerate(zip(dates, accuracies)):
+            ax.text(date, acc + 3, f'{acc:.1f}%', ha='center', va='bottom', 
+                   fontweight='bold', fontsize=10, color='#0ea5e9',
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='#0ea5e9', linewidth=1.5, alpha=0.9))
+        
+        # Add trend line
+        if len(dates) >= 2:
+            z = np.polyfit(range(len(accuracies)), accuracies, 1)
+            p = np.poly1d(z)
+            trend_line = p(range(len(accuracies)))
+            ax.plot(dates, trend_line, linewidth=2.5, color='#ef4444', linestyle='--', 
+                   label='Ligne de tendance', zorder=2, alpha=0.8)
+        
+        # Add average line
+        avg_acc = np.mean(accuracies)
+        ax.axhline(y=avg_acc, color='#f97316', linestyle=':', linewidth=2, label=f'Moyenne globale ({avg_acc:.1f}%)', zorder=2)
+        
+        ax.set_title(f'Courbe d\'apprentissage - Précision du modèle (R²) pour {disease_name}', 
+                    fontsize=16, fontweight='bold', pad=20)
+        ax.set_xlabel('📅 Date de prédiction', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_ylabel('📊 Précision R² (%) - Moyenne par Date', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_ylim(-5, 115)
+        ax.grid(True, alpha=0.3, zorder=1)
+        ax.legend(loc='lower right', fontsize=11, framealpha=0.9)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3) if len(dates) > 3 else mdates.MonthLocator())
+        ax.tick_params(axis='both', labelsize=10, colors='#1e293b')
+        plt.xticks(rotation=45, ha='right')
+        
+        return generate_graph_base64(fig)
+    
+    def _generate_distribution_graph(self, disease_name, province_name=None):
+        """Generate distribution of cases by zone/month"""
+        if province_name:
+            data = ClinicalData.objects.filter(
+                disease_name=disease_name,
+                health_zone__territory__province__name=province_name
+            ).values('health_zone__name').annotate(
+                total_cases=Sum('cases_count')
+            ).order_by('-total_cases')
+        else:
+            data = ClinicalData.objects.filter(
+                disease_name=disease_name
+            ).values('health_zone__name').annotate(
+                total_cases=Sum('cases_count')
+            ).order_by('-total_cases')
+        
+        if not data:
+            return None
+        
+        zones = [d['health_zone__name'][:20] for d in data]
+        cases = [d['total_cases'] for d in data]
+        
+        # Ajuster la hauteur en fonction du nombre de zones
+        num_zones = len(zones)
+        fig_height = max(6, num_zones * 0.4)  # Au moins 0.4 pouces par zone
+        
+        fig, ax = plt.subplots(figsize=(12, fig_height), facecolor='white')
+        colors = plt.cm.Spectral(np.linspace(0, 1, len(zones)))
+        bars = ax.bar(zones, cases, color=colors, edgecolor='black', linewidth=1.5)
+        
+        ax.set_ylabel('📊 Nombre de cas', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_xlabel('🏥 Zone de Santé', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_title(f'Distribution des cas de {disease_name} par zone de santé', 
+                    fontsize=16, fontweight='bold', pad=20)
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.tick_params(axis='both', labelsize=10, colors='#1e293b')
+        plt.xticks(rotation=45, ha='right')
+        
+        return generate_graph_base64(fig)
+    
+    def _generate_seasonality_graph(self, disease_name, province_name=None):
+        """Generate seasonality pattern showing cases by month"""
+        if province_name:
+            data = ClinicalData.objects.filter(
+                disease_name=disease_name,
+                health_zone__territory__province__name=province_name
+            ).values('month').annotate(
+                total_cases=Sum('cases_count')
+            ).order_by('month')
+        else:
+            data = ClinicalData.objects.filter(
+                disease_name=disease_name
+            ).values('month').annotate(
+                total_cases=Sum('cases_count')
+            ).order_by('month')
+        
+        if not data:
+            return None
+        
+        df = pd.DataFrame(list(data))
+        df['month'] = pd.to_datetime(df['month'])
+        df['month_num'] = df['month'].dt.month
+        df['year'] = df['month'].dt.year
+        
+        # Group by month across all years
+        monthly_avg = df.groupby('month_num')['total_cases'].mean()
+        months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
+        # Only use months that have data (fix for dimension mismatch)
+        available_months = sorted(monthly_avg.index.tolist())
+        month_labels = [months[m-1] for m in available_months]
+        monthly_values = monthly_avg.values
+        
+        fig, ax = plt.subplots(figsize=(12, 5), facecolor='white')
+        ax.plot(available_months, monthly_values, linewidth=3, marker='o', color='#10b981', markersize=10)
+        ax.fill_between(available_months, monthly_values, alpha=0.2, color='#10b981')
+        
+        ax.set_xticks(available_months)
+        ax.set_xticklabels(month_labels)
+        ax.set_xlabel('📅 Mois', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_ylabel('📊 Nombre moyen de cas', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_title(f'Saisonnalité - Tendance mensuelle moyenne de {disease_name}', 
+                    fontsize=16, fontweight='bold', pad=20)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', labelsize=10, colors='#1e293b')
+        
+        return generate_graph_base64(fig)
+    
+    def _generate_zone_performance_graph(self, disease_name, province_name=None):
+        """Generate zone performance comparison graph"""
+        if province_name:
+            zones = HealthZone.objects.filter(
+                territory__province__name=province_name,
+                clinicaldata__disease_name=disease_name
+            ).distinct().annotate(
+                total_cases=Sum('clinicaldata__cases_count'),
+                avg_cases=Avg('clinicaldata__cases_count')
+            ).order_by('-total_cases')
+        else:
+            zones = HealthZone.objects.filter(
+                clinicaldata__disease_name=disease_name
+            ).distinct().annotate(
+                total_cases=Sum('clinicaldata__cases_count'),
+                avg_cases=Avg('clinicaldata__cases_count')
+            ).order_by('-total_cases')
+        
+        if not zones:
+            return None
+        
+        zone_names = [z.name[:15] for z in zones]
+        total = [z.total_cases or 0 for z in zones]
+        avg = [z.avg_cases or 0 for z in zones]
+        
+        # Ajuster la hauteur en fonction du nombre de zones
+        num_zones = len(zone_names)
+        fig_height = max(6, num_zones * 0.35)  # Au moins 0.35 pouces par zone
+        
+        fig, ax = plt.subplots(figsize=(12, fig_height), facecolor='white')
+        
+        x = np.arange(len(zone_names))
+        width = 0.35
+        
+        bars1 = ax.bar(x - width/2, total, width, label='Total accumé', color='#f43f5e', alpha=0.8)
+        bars2 = ax.bar(x + width/2, [a*12 for a in avg], width, label='Annualisé (mensuel × 12)', color='#0ea5e9', alpha=0.8)
+        
+        ax.set_ylabel('📊 Nombre de cas', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_xlabel('🏥 Zone de Santé', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_title(f'Performance des zones de santé - {disease_name}', fontsize=16, fontweight='bold', pad=20)
+        ax.set_xticks(x)
+        ax.set_xticklabels(zone_names, rotation=45, ha='right')
+        ax.legend(fontsize=11, framealpha=0.9)
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.tick_params(axis='both', labelsize=10, colors='#1e293b')
+        
+        return generate_graph_base64(fig)
+    
+    def _generate_timeline_graph(self, disease_name, province_name=None):
+        """Generate timeline showing historical cases evolution"""
+        if province_name:
+            data = ClinicalData.objects.filter(
+                disease_name=disease_name,
+                health_zone__territory__province__name=province_name
+            ).values('month').annotate(
+                cases=Sum('cases_count')
+            ).order_by('month')
+        else:
+            data = ClinicalData.objects.filter(
+                disease_name=disease_name
+            ).values('month').annotate(
+                cases=Sum('cases_count')
+            ).order_by('month')
+        
+        if not data:
+            return None
+        
+        df = pd.DataFrame(list(data))
+        df['month'] = pd.to_datetime(df['month'])
+        
+        fig, ax = plt.subplots(figsize=(14, 6), facecolor='white')
+        ax.plot(df['month'], df['cases'], linewidth=3, marker='o', color='#ef4444', markersize=6, label='Cas confirmés')
+        ax.fill_between(df['month'], df['cases'], alpha=0.2, color='#ef4444')
+        
+        ax.set_title(f'Évolution Temporelle - {disease_name}', fontsize=16, fontweight='bold', pad=20)
+        ax.set_xlabel('📅 Période', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_ylabel('📊 Nombre de cas', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', labelsize=10, colors='#1e293b')
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=6))
+        plt.xticks(rotation=45, ha='right')
+        ax.legend(fontsize=11, framealpha=0.9)
+        
+        return generate_graph_base64(fig)
+    
+    def _generate_province_comparison_graph(self, disease_name):
+        """Generate province comparison graph"""
+        provinces = Province.objects.filter(
+            territories__health_zones__clinicaldata__disease_name=disease_name
+        ).distinct().annotate(
+            total_cases=Sum('territories__health_zones__clinicaldata__cases_count')
+        ).order_by('-total_cases')[:15]
+        
+        if not provinces:
+            return None
+        
+        prov_names = [p.name for p in provinces]
+        prov_cases = [p.total_cases or 0 for p in provinces]
+        
+        fig, ax = plt.subplots(figsize=(12, 7), facecolor='white')
+        colors = plt.cm.RdYlGn_r(np.linspace(0.2, 0.8, len(prov_names)))
+        bars = ax.barh(prov_names, prov_cases, color=colors, edgecolor='black', linewidth=1)
+        
+        ax.set_xlabel('📊 Nombre total de cas', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_title(f'Charge morbide de {disease_name} par Province', fontsize=16, fontweight='bold', pad=20)
+        ax.grid(True, alpha=0.3, axis='x')
+        ax.tick_params(axis='both', labelsize=10, colors='#1e293b')
+        
+        return generate_graph_base64(fig)
+    
+    def _generate_prediction_with_history_graph(self, disease_name, province_name=None):
+        """Generate graph combining historical data and predictions"""
+        # Get historical data
+        if province_name:
+            historic_data = ClinicalData.objects.filter(
+                disease_name=disease_name,
+                health_zone__territory__province__name=province_name
+            ).values('month').annotate(
+                cases=Sum('cases_count')
+            ).order_by('month')
+            
+            predictions = Prediction.objects.filter(
+                disease_name=disease_name,
+                health_zone__territory__province__name=province_name
+            ).order_by('prediction_date')
+        else:
+            historic_data = ClinicalData.objects.filter(
+                disease_name=disease_name
+            ).values('month').annotate(
+                cases=Sum('cases_count')
+            ).order_by('month')
+            
+            predictions = Prediction.objects.filter(
+                disease_name=disease_name
+            ).order_by('prediction_date')
+        
+        if not historic_data:
+            return None
+        
+        # Prepare historical data
+        df_hist = pd.DataFrame(list(historic_data))
+        df_hist['month'] = pd.to_datetime(df_hist['month'])
+        
+        fig, ax = plt.subplots(figsize=(14, 6), facecolor='white')
+        
+        # Plot historical data
+        ax.plot(df_hist['month'], df_hist['cases'], linewidth=3, marker='o', 
+               color='#0ea5e9', markersize=7, label='Données historiques', zorder=3)
+        ax.fill_between(df_hist['month'], df_hist['cases'], alpha=0.2, color='#0ea5e9')
+        
+        # Plot predictions if available
+        if predictions.exists():
+            pred_dates = []
+            pred_cases = []
+            for pred in predictions:
+                pred_dates.append(pred.prediction_date)
+                pred_cases.append(pred.predicted_cases or 0)
+            
+            if pred_dates and len(pred_dates) >= 2:
+                ax.plot(pred_dates, pred_cases, linewidth=3, marker='s', 
+                       color='#ef4444', markersize=8, label='Prédictions', zorder=3, linestyle='--')
+                ax.fill_between(pred_dates, pred_cases, alpha=0.2, color='#ef4444')
+            elif pred_dates:
+                # Single prediction point - just plot without fill
+                ax.plot(pred_dates, pred_cases, linewidth=3, marker='s', 
+                       color='#ef4444', markersize=8, label='Prédictions', zorder=3, linestyle='--')
+        
+        ax.set_title(f'Prédictions & Tendances - {disease_name}', fontsize=16, fontweight='bold', pad=20)
+        ax.set_xlabel('📅 Période', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.set_ylabel('📊 Nombre de cas', fontweight='bold', fontsize=13, color='#1e293b')
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='both', labelsize=10, colors='#1e293b')
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+        plt.xticks(rotation=45, ha='right')
+        ax.legend(fontsize=11, framealpha=0.9, loc='upper left')
         
         return generate_graph_base64(fig)

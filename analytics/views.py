@@ -8,11 +8,14 @@ from django.db.models import Sum, Avg, Max, F
 import os
 import json
 import logging
+import signal
 from pathlib import Path
 import folium
 from folium.plugins import HeatMap
 from .intelligence import EpidemicContextualizer
 from .task_runner import TaskRunner
+from .disease_analyzer import DiseaseAnalyzer
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,18 @@ class DashboardView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+
+        # Get selected zone if any
+        selected_zone_id = self.request.GET.get('selected_zone')
+        selected_zone = None
+
+        if selected_zone_id:
+            try:
+                selected_zone = HealthZone.objects.get(id=selected_zone_id)
+                context['selected_zone'] = selected_zone
+                context['selected_zone_id'] = selected_zone.id
+            except HealthZone.DoesNotExist:
+                selected_zone = None
         
         # --- Base de Connaissances par Maladie (Santé Publique Avancée) ---
         knowledge_db = {
@@ -85,7 +100,7 @@ class DashboardView(TemplateView):
         all_preds = Prediction.objects.all()
         if all_preds.exists():
             reliabilities = [p.influence_factors.get('reliability', 0) for p in all_preds if p.influence_factors]
-            spread_rates = [p.influence_factors.get('weekly_spread_rate', 0) for p in all_preds if p.influence_factors]
+            spread_rates = [p.propagation_rate for p in all_preds if p.propagation_rate]
             context['avg_reliability'] = round(sum(reliabilities)/len(reliabilities), 1) if reliabilities else 0.0
             context['avg_prec_score'] = round(sum([p.influence_factors.get('r2', 0) for p in all_preds if p.influence_factors])*100/len(all_preds), 1) if all_preds.exists() else 0.0
             context['avg_spread'] = round(sum(spread_rates)/len(spread_rates), 1) if spread_rates else 0.0
@@ -231,8 +246,10 @@ class DashboardView(TemplateView):
                     
                     # Ajustement climatique
                     climate_boost = 1.0
-                    prov_name = p.health_zone.territory.province.name
-                    if prov_name in climate_by_province:
+                    prov_name = None
+                    if p.health_zone.territory and p.health_zone.territory.province:
+                        prov_name = p.health_zone.territory.province.name
+                    if prov_name and prov_name in climate_by_province:
                         clim = climate_by_province[prov_name]
                         # Boost si conditions favorables (T° 20-28°C + humidité >60% = vecteurs actifs)
                         if 20 <= clim['temp'] <= 28 and clim['humidity'] > 60:
@@ -323,9 +340,12 @@ class DashboardView(TemplateView):
                     hist_rows = "".join([f"<tr><td style='padding:4px; border-bottom:1px solid #eee;'>{h.month.strftime('%b %y')}</td><td style='padding:4px; border-bottom:1px solid #eee;'>{h.disease_name}</td><td style='padding:4px; border-bottom:1px solid #eee;'>{int(h.cases_count)}</td></tr>" for h in hist])
                     
                     # Récupérer le taux de propagation (peut être négatif = baisse, positif = hausse)
-                    propagation_rate = p.influence_factors.get('weekly_spread_rate', 0) if p.influence_factors else 0
+                    propagation_rate = p.propagation_rate if p.propagation_rate is not None else 0
                     # ✅ Garder les vraies valeurs (positives = croissance, négatives = décroissance)
-                    
+
+                    # Calculer le pourcentage de récurrence (persistance) de la maladie dans cette zone
+                    recurrence_data = DiseaseAnalyzer.get_recurrence_percentage(p.health_zone, disease_for_hist)
+
                     # -- ESTHÉTIQUE PREMIUM : Cercles Pulsants & Couleurs Vibrantes --
                     # Rouge: #f43f5e (Rose-Red), Jaune: #fbbf24 (Amber), Bleu: #38bdf8 (Sky)
                     color_hex = '#f43f5e' if p.predicted_cases > 150 else '#fbbf24' if p.predicted_cases > 50 else '#38bdf8'
@@ -359,7 +379,17 @@ class DashboardView(TemplateView):
                             {z_info}
                             <p style='font-size: 10px; font-weight: 800; color: #64748b; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;'>📊 Analyse Historique {'⚠️ (Denses Limited)' if p.influence_factors.get('data_sparse') else ''}</p>
                             <table style='width: 100%; border-collapse: collapse;'>{hist_rows}</table>
-                            
+
+                            <!-- 🔥 MESSAGE DE RÉCURRENCE (PERSISTANCE) - MIS EN AVANT -->
+                            <div style='margin: 12px 0; padding: 12px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 10px; color: #92400e; line-height: 1.5;'>
+                                <div style='font-weight: 900; margin-bottom: 4px;'>🔄 Récurrence Historique</div>
+                                <div><strong>Taux de présence : {recurrence_data['percentage']}%</strong></div>
+                                <div style='font-size: 9px; margin-top: 4px;'>
+                                    Sur la période {recurrence_data['first_date'].year if recurrence_data['first_date'] else '?'}-{recurrence_data['last_date'].year if recurrence_data['last_date'] else '?'}, la maladie était présente dans <b>{recurrence_data['active_months']} mois</b> sur <b>{recurrence_data['total_months_in_period']} mois</b>.<br>
+                                    <i>Données disponibles : {recurrence_data['data_months']} mois ({recurrence_data['completeness']}% de complétude)</i>
+                                </div>
+                            </div>
+
                             <div style='margin-top: 15px; padding-top: 15px; border-top: 1px solid #f1f5f9;'>
                                 <div style='display: flex; gap: 8px; align-items: center; margin-bottom: 8px;'>
                                     <div style='width: 8px; height: 8px; border-radius: 50%; background: {color_hex};'></div>
@@ -384,17 +414,70 @@ class DashboardView(TemplateView):
                     </div>
                     """
                     
-                    folium.CircleMarker(
+                    # Determine if this is the selected zone
+                    is_selected = selected_zone and p.health_zone.id == selected_zone.id
+                    marker_radius = 14 if is_selected else (10 if p.predicted_cases > 150 else 7)
+                    marker_weight = 4 if is_selected else 3
+                    marker_color = 'yellow' if is_selected else color_hex
+
+                    circle = folium.CircleMarker(
                         location=[lat, lon],
-                        radius=10 if p.predicted_cases > 150 else 7,
-                        color=color_hex,
+                        radius=marker_radius,
+                        color=marker_color,
                         fill=True,
                         fill_color=color_hex,
-                        fill_opacity=0.7,
-                        weight=3,
+                        fill_opacity=0.7 if not is_selected else 0.9,
+                        weight=marker_weight,
                         popup=folium.Popup(popup_html, max_width=300),
-                        tooltip=f"ALERTE {p.disease_name.upper()}: {int(p.predicted_cases)} cas à {p.health_zone.name}"
-                    ).add_to(m)
+                        tooltip=f"ALERTE {p.disease_name.upper()}: {int(p.predicted_cases)} cas à {p.health_zone.name}",
+                        # Custom attribute for zone ID (will be in layer.options.zoneId)
+                        **{'zoneId': p.health_zone.id}
+                    )
+                    circle.add_to(m)
+
+        # 6. PROPAGATION PATH - Yellow line showing spread from selected zone
+        if selected_zone and selected_disease != 'all':
+            # Build propagation path connecting zones with similar disease
+            selected_zone_preds = Prediction.objects.filter(
+                health_zone=selected_zone,
+                disease_name=selected_disease
+            ).order_by('-predicted_cases')
+
+            if selected_zone_preds.exists():
+                # Get the main prediction for selected zone
+                main_pred = selected_zone_preds.first()
+
+                # Find connected zones (adjacent territories or similar patterns)
+                propagation_zones = Prediction.objects.filter(
+                    disease_name=selected_disease,
+                    health_zone__latitude__isnull=False,
+                    health_zone__longitude__isnull=False
+                ).exclude(health_zone=selected_zone)
+
+                # Get ALL zones with predictions for this disease
+                # Shows propagation across all provinces (not limited to selected province)
+                propagation_zones = propagation_zones.order_by('-predicted_cases')
+
+                # Build coordinates path: start from selected zone, connect to propagation zones
+                propagation_coords = []
+                if selected_zone.latitude and selected_zone.longitude:
+                    propagation_coords.append([selected_zone.latitude, selected_zone.longitude])
+
+                    for pz in propagation_zones:
+                        if pz.health_zone.latitude and pz.health_zone.longitude:
+                            propagation_coords.append([pz.health_zone.latitude, pz.health_zone.longitude])
+
+                    # Draw the yellow propagation line
+                    if len(propagation_coords) > 1:
+                        folium.PolyLine(
+                            propagation_coords,
+                            color='yellow',
+                            weight=4,
+                            opacity=0.8,
+                            dash_array='8, 4',
+                            tooltip=f'Propagation path: {selected_zone.name} → Adjacent zones ({selected_disease})',
+                            popup=f'<b>Propagation Path</b><br>From: {selected_zone.name}<br>Disease: {selected_disease}<br>Predicted cases: {int(main_pred.predicted_cases) if main_pred else "N/A"}'
+                        ).add_to(m)
 
         # Legend removed from Folium to be placed outside the map (Sidebar) as requested
 
@@ -446,15 +529,35 @@ class DashboardView(TemplateView):
             cases=Sum('predicted_cases')
         ).order_by('-cases')
 
+        # Propagation moyenne par maladie
+        spread_by_disease = {}
+        for disease_rec in context['stats']:
+            disease_name = disease_rec['disease_name']
+            disease_preds = stats_base.filter(disease_name=disease_name)
+            rates = [p.propagation_rate for p in disease_preds if p.propagation_rate]
+            avg = round(sum(rates)/len(rates), 1) if rates else 0.0
+            spread_by_disease[disease_name] = avg
+        context['spread_by_disease'] = spread_by_disease
+
         # Prediction Year
         first_pred = Prediction.objects.order_by('-prediction_date').first()
         context['prediction_year'] = first_pred.prediction_date.year if first_pred else 2026
-        
+
+        # Province-specific recurrence for the selected disease (if disease selected)
+        province_recurrence = None
+        if selected_disease != 'all' and selected_province != 'all':
+            summary = DiseaseAnalyzer.get_disease_recurrence_summary(selected_disease, selected_province)
+            province_recurrence = {
+                'percentage': summary['avg_recurrence'],
+                'zones_count': summary['zones_count']
+            }
+        context['province_recurrence'] = province_recurrence
+
         # 1. Spatio-Temporal Data Pattern Analysis
         if context['zone_count'] > 0:
-            preds_data = preds_qs.values('influence_factors', 'predicted_cases')
-            spread_rates = [p['influence_factors'].get('weekly_spread_rate', 5.0) for p in preds_data if p['influence_factors']]
-            context['avg_spread'] = round(sum(spread_rates)/len(spread_rates), 1) if spread_rates else 5.0
+            # Utiliser propagation_rate directement (champ du modèle)
+            spread_rates = [p.propagation_rate for p in preds_qs if p.propagation_rate]
+            context['avg_spread'] = round(sum(spread_rates)/len(spread_rates), 1) if spread_rates else 0.0
         else:
             context['avg_spread'] = 0.0
         
@@ -701,11 +804,11 @@ class DashboardView(TemplateView):
             # Récupérer les dernières données climatiques réelles de la BD
             latest_climate = climate_qs.order_by('-month').first()
             if latest_climate:
-                # Convertir température de Kelvin en Celsius (K - 273.15)
-                temp_celsius = round(latest_climate.temperature - 273.15, 1)
+                # Température déjà en Celsius (pas de conversion)
+                temp_celsius = round(latest_climate.temperature, 1)
                 climate_impact_data['current_temperature'] = temp_celsius
-                # Précipitations: garder 3 décimales car valeurs très petites (0.001-0.122mm)
-                climate_impact_data['current_precipitation'] = round(latest_climate.precipitation, 3)
+                # Précipitations déjà en mm
+                climate_impact_data['current_precipitation'] = round(latest_climate.precipitation, 1)
                 if latest_climate.humidity is not None:
                     climate_impact_data['current_humidity'] = round(latest_climate.humidity, 1)
             
@@ -757,44 +860,53 @@ class DashboardView(TemplateView):
                     temp_vals = np.array([x[0] for x in temp_cases])
                     cases_vals = np.array([x[1] for x in temp_cases])
                     corr_t, _ = pearsonr(temp_vals, cases_vals)
-                    climate_impact_data['temperature_correlation'] = round(abs(corr_t), 2)
+                    climate_impact_data['temperature_correlation'] = round(corr_t, 2)  # Garder le signe
                 except:
                     pass
-            
+
             if len(precip_cases) >= 10:
                 try:
                     precip_vals = np.array([x[0] for x in precip_cases])
                     cases_vals = np.array([x[1] for x in precip_cases])
                     corr_p, _ = pearsonr(precip_vals, cases_vals)
-                    climate_impact_data['precipitation_correlation'] = round(abs(corr_p), 2)
+                    climate_impact_data['precipitation_correlation'] = round(corr_p, 2)  # Garder le signe
                 except:
                     pass
-            
+
             if len(humidity_cases) >= 10:
                 try:
                     humidity_vals = np.array([x[0] for x in humidity_cases])
                     cases_vals = np.array([x[1] for x in humidity_cases])
                     corr_h, _ = pearsonr(humidity_vals, cases_vals)
-                    climate_impact_data['humidity_correlation'] = round(abs(corr_h), 2)
+                    climate_impact_data['humidity_correlation'] = round(corr_h, 2)  # Garder le signe
                 except:
                     pass
             
-            # Générer explication scientifique basée sur les corrélations RÉELLES
+            # Générer explication scientifique basée sur les corrélations RÉELLES (avec signe)
             r_temp = climate_impact_data['temperature_correlation']
             r_precip = climate_impact_data['precipitation_correlation']
             r_humidity = climate_impact_data['humidity_correlation']
-            
+
             current_temp_str = f"{climate_impact_data['current_temperature']}°C" if climate_impact_data['current_temperature'] is not None else "N/A"
             current_rain_str = f"{climate_impact_data['current_precipitation']}mm" if climate_impact_data['current_precipitation'] is not None else "N/A"
-            
-            if r_temp > 0.4:
-                climate_impact_data['climate_explanation'] = f"🌡️ FORTE corrélation chaleur-épidémie (r={r_temp}). Température actuelle: {current_temp_str}. Vecteurs + transmission accélérés quand T° augmente."
-            elif r_precip > 0.4:
-                climate_impact_data['climate_explanation'] = f"🌧️ FORTE corrélation pluie-épidémie (r={r_precip}). Pluies actuelles: {current_rain_str}. Eau stagnante favorise reproduction vecteurs."
-            elif r_humidity > 0.3:
-                climate_impact_data['climate_explanation'] = f"💨 Humidité significative (r={r_humidity}). Conditions favorables aux vecteurs. Surveiller sanitaire & eau."
-            elif r_temp > 0.2 or r_precip > 0.2:
-                climate_impact_data['climate_explanation'] = f"📊 Corrélations modérées: Temp={r_temp}, Pluies={r_precip}. Facteurs climatiques partiellement significatifs."
+
+            # Utiliser la magnitude (valeur absolue) pour évaluer la force
+            abs_r_temp = abs(r_temp)
+            abs_r_precip = abs(r_precip)
+            abs_r_humidity = abs(r_humidity)
+
+            if abs_r_temp > 0.4:
+                direction = "augmente" if r_temp > 0 else "diminue"
+                climate_impact_data['climate_explanation'] = f"🌡️ FORTE corrélation température-épidémie (r={r_temp}). Température actuelle: {current_temp_str}. Quand T° {direction}, cas {direction}nt."
+            elif abs_r_precip > 0.4:
+                direction = "augmente" if r_precip > 0 else "diminue"
+                climate_impact_data['climate_explanation'] = f"🌧️ FORTE corrélation pluie-épidémie (r={r_precip}). Pluies actuelles: {current_rain_str}. Eau stagnante {direction} → vecteurs {direction}nt."
+            elif abs_r_humidity > 0.3:
+                direction = "augmente" if r_humidity > 0 else "diminue"
+                climate_impact_data['climate_explanation'] = f"💨 Humidité significative (r={r_humidity}). Conditions favorables aux vecteurs {direction}nt. Surveiller."
+            elif max(abs_r_temp, abs_r_precip, abs_r_humidity) > 0.2:
+                # Au moins une corrélation modérée
+                climate_impact_data['climate_explanation'] = f"📊 Corrélations modérées: Temp={r_temp}, Pluies={r_precip}, Hum={r_humidity}. Facteurs climatiques partiellement significatifs."
             else:
                 climate_impact_data['climate_explanation'] = "⛅ Facteurs climatiques peu corrélés. Autres facteurs (démographie, accès soins) plus déterminants."
         
@@ -921,18 +1033,145 @@ class DashboardView(TemplateView):
         
         return context
 
+def api_zone_detail(request, zone_id):
+    """API endpoint to get detailed data for a specific health zone"""
+    try:
+        zone = HealthZone.objects.get(id=zone_id)
+
+        # Get predictions for this zone
+        preds = Prediction.objects.filter(health_zone=zone).select_related('health_zone')
+
+        # Get adjacent zones (simplified: zones in same territory)
+        adjacent_zones = HealthZone.objects.filter(
+            territory=zone.territory
+        ).exclude(id=zone.id)[:10]
+
+        # Build response
+        data = {
+            'zone_id': zone.id,
+            'zone_name': zone.name,
+            'territory': zone.territory.name if zone.territory else 'N/A',
+            'province': zone.territory.province.name if zone.territory and zone.territory.province else 'N/A',
+            'latitude': zone.latitude,
+            'longitude': zone.longitude,
+            'population': zone.population,
+            'predictions': [],
+            'adjacent_zones': [],
+            'recurrences': []  # Add recurrence data for each disease
+        }
+
+        # Calculate recurrence for the zone's main diseases
+        disease_names = set(pred.disease_name for pred in preds)
+        for disease in disease_names:
+            recurrence_data = DiseaseAnalyzer.get_recurrence_percentage(zone, disease)
+            data['recurrences'].append({
+                'disease': disease,
+                'percentage': recurrence_data['percentage'],
+                'active_months': recurrence_data['active_months'],
+                'total_months': recurrence_data['total_months'],
+                'message': recurrence_data['message']
+            })
+
+        for pred in preds:
+            data['predictions'].append({
+                'disease': pred.disease_name,
+                'predicted_cases': pred.predicted_cases,
+                'propagation_rate': pred.propagation_rate,
+                'reliability': pred.influence_factors.get('reliability', 0) if pred.influence_factors else 0,
+                'r2': pred.influence_factors.get('r2', 0) if pred.influence_factors else 0,
+                'model_used': pred.influence_factors.get('model_used', 'Unknown') if pred.influence_factors else 'Unknown',
+                'prediction_date': pred.prediction_date.strftime('%Y-%m-%d') if pred.prediction_date else None
+            })
+
+        for adj in adjacent_zones:
+            data['adjacent_zones'].append({
+                'id': adj.id,
+                'name': adj.name,
+                'latitude': adj.latitude,
+                'longitude': adj.longitude,
+                'population': adj.population
+            })
+
+        return JsonResponse(data)
+    except HealthZone.DoesNotExist:
+        return JsonResponse({'error': 'Zone not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+def api_zone_propagation_path(request, zone_id):
+    """API endpoint to get propagation path for a zone (for yellow line)"""
+    try:
+        zone = HealthZone.objects.get(id=zone_id)
+
+        # Get predictions to identify propagation direction
+        preds = Prediction.objects.filter(health_zone=zone).order_by('-predicted_cases')[:5]
+
+        # Build propagation path: connect to zones with similar disease patterns
+        propagation_points = []
+
+        # Start with the selected zone
+        if zone.latitude and zone.longitude:
+            propagation_points.append([zone.latitude, zone.longitude])
+
+            # Find zones with similar predictions (potential spread destinations)
+            if preds.exists():
+                main_disease = preds.first().disease_name
+                nearby_zones = HealthZone.objects.filter(
+                    territory__province=zone.territory.province if zone.territory else None
+                ).exclude(id=zone.id).filter(
+                    latitude__isnull=False,
+                    longitude__isnull=False
+                )[:8]
+
+                for adj in nearby_zones:
+                    # Check if this zone has predictions for same disease
+                    adj_pred = Prediction.objects.filter(
+                        health_zone=adj,
+                        disease_name=main_disease
+                    ).first()
+
+                    if adj_pred:
+                        propagation_points.append([adj.latitude, adj.longitude])
+
+        return JsonResponse({
+            'zone_name': zone.name,
+            'points': propagation_points,
+            'disease': main_disease if preds.exists() else None
+        })
+    except HealthZone.DoesNotExist:
+        return JsonResponse({'error': 'Zone not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
 def api_stats(request):
-    stats = Prediction.objects.values('disease_name').annotate(cases=Sum('predicted_cases')).order_by('-cases')
-    return JsonResponse(list(stats), safe=False)
+    from .disease_analyzer import DiseaseAnalyzer
+
+    stats = Prediction.objects.values('disease_name').annotate(
+        cases=Sum('predicted_cases'),
+        avg_spread=Avg('propagation_rate')
+    ).order_by('-cases')
+    data = []
+    for stat in stats:
+        disease_name = stat['disease_name']
+        # Calculate recurrence summary for this disease globally
+        recurrence_summary = DiseaseAnalyzer.get_disease_recurrence_summary(disease_name)
+        data.append({
+            'disease_name': disease_name,
+            'cases': stat['cases'],
+            'avg_spread': round(stat['avg_spread'] or 0, 1),
+            'recurrence_percentage': recurrence_summary['avg_recurrence'],
+            'recurrence_zones': recurrence_summary['zones_count']
+        })
+    return JsonResponse(data, safe=False)
 
 def api_predictions(request):
     predictions = Prediction.objects.select_related('health_zone').all()
     data = []
-    
+
     for p in predictions:
         # Get historical context for this specific zone and disease
         history_qs = ClinicalData.objects.filter(
-            health_zone=p.health_zone, 
+            health_zone=p.health_zone,
             disease_name=p.disease_name
         ).order_by('-month')
 
@@ -942,7 +1181,9 @@ def api_predictions(request):
         months_data = history_qs.values('month').annotate(total=Sum('cases_count')).order_by('-month')[:2]
 
         data.append({
+            "id": p.id,
             "zone_name": p.health_zone.name,
+            "zone_id": p.health_zone.id,
             "disease": p.disease_name,
             "cases": p.predicted_cases,
             "lat": p.health_zone.latitude,
@@ -1032,6 +1273,7 @@ def task_status_api(request, task_id):
             'task_type': task_run.task_type,
             'status': task_run.status,
             'progress': task_run.progress,
+            'process_id': task_run.process_id,  #Pour arrêt
             'started_at': task_run.started_at.isoformat() if task_run.started_at else None,
             'completed_at': task_run.completed_at.isoformat() if task_run.completed_at else None,
             'output_log': task_run.output_log[-500:] if task_run.output_log else '',  # Derniers 500 chars
@@ -1040,3 +1282,288 @@ def task_status_api(request, task_id):
         return JsonResponse(data)
     except TaskRun.DoesNotExist:
         return JsonResponse({'error': 'Task not found'}, status=404)
+
+
+def training_performance_api(request):
+    """
+    API pour récupérer les métriques de performance des modèles d'entraînement
+    de façon dynamique (à partir de la base de données)
+    """
+    try:
+        from collections import defaultdict
+        import json
+
+        # Récupérer toutes les prédictions avec leurs influence_factors
+        preds = Prediction.objects.all().select_related('health_zone')
+        province = request.GET.get('province', 'all')
+        disease = request.GET.get('disease', 'all')
+
+        # Appliquer les filtres si nécessaire
+        if province != 'all':
+            preds = preds.filter(health_zone__territory__province__name=province)
+        if disease != 'all':
+            preds = preds.filter(disease_name=disease)
+
+        # Structure pour accumuler les métriques par modèle
+        model_metrics = defaultdict(lambda: {
+            'r2': [], 'reliability': [], 'mae': [], 'tier': [], 'diseases': set(), 'zones': set()
+        })
+
+        # Parcourir toutes les prédictions
+        for p in preds.iterator():
+            inf = p.influence_factors or {}
+            model_name = inf.get('model_used', 'Unknown')
+            r2 = float(inf.get('r2', 0))
+            reliability = float(inf.get('reliability', 50))
+            mae = float(inf.get('mae', 0))
+            tier = int(inf.get('tier', 4))
+
+            model_metrics[model_name]['r2'].append(r2)
+            model_metrics[model_name]['reliability'].append(reliability)
+            model_metrics[model_name]['mae'].append(mae)
+            model_metrics[model_name]['tier'].append(tier)
+            model_metrics[model_name]['diseases'].add(p.disease_name)
+            model_metrics[model_name]['zones'].add(p.health_zone.name)
+
+        # Préparer les données pour le graphique
+        models_data = []
+        # Exclure le Persistence (tier 4) pour éviter le fallback
+        model_order = ['ConvLSTM2D', 'CNN-LSTM', 'Bi-LSTM']  # Ne pas inclure 'Persistence'
+
+        for model_name in model_order:
+            if model_name in model_metrics and model_metrics[model_name]['r2']:
+                metrics = model_metrics[model_name]
+                avg_r2 = round(sum(metrics['r2']) / len(metrics['r2']) * 100, 1)  # en %
+                avg_reliability = round(sum(metrics['reliability']) / len(metrics['reliability']), 1)
+                avg_mae = round(sum(metrics['mae']) / len(metrics['mae']), 1)
+
+                models_data.append({
+                    'name': model_name,
+                    'r2': avg_r2,
+                    'reliability': avg_reliability,
+                    'mae': avg_mae,
+                    'tier': int(metrics['tier'][0]) if metrics['tier'] else 4,
+                    'disease_count': len(metrics['diseases']),
+                    'zone_count': len(metrics['zones'])
+                })
+
+        # Récupérer les statistiques globales
+        total_predictions = preds.count()
+        avg_spread = 0
+        if total_predictions > 0:
+            spread_rates = [p.propagation_rate for p in preds if p.propagation_rate]
+            avg_spread = round(sum(spread_rates) / len(spread_rates), 1) if spread_rates else 0.0
+
+        # Récupérer les prédictions par mois (pour graphique temporel)
+        from django.db.models import Sum
+        temporal_data = preds.values('prediction_date__year', 'prediction_date__month').annotate(
+            total_cases=Sum('predicted_cases')
+        ).order_by('prediction_date__year', 'prediction_date__month')
+
+        temporal_labels = []
+        temporal_values = []
+        for item in temporal_data:
+            label = f"{item['prediction_date__year']}-{item['prediction_date__month']:02d}"
+            temporal_labels.append(label)
+            temporal_values.append(float(item['total_cases']))
+
+        return JsonResponse({
+            'success': True,
+            'data': {
+                'models': models_data,
+                'total_predictions': total_predictions,
+                'avg_spread': avg_spread,
+                'temporal': {
+                    'labels': temporal_labels,
+                    'values': temporal_values
+                }
+            }
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+def zone_recurrence_api(request):
+    """
+    API pour récupérer les pourcentages de récurrence des maladies par zone
+    (pour affichage dynamique sur la carte)
+    """
+    try:
+        from .disease_analyzer import DiseaseAnalyzer
+        from django.db.models import Count, Q
+
+        province = request.GET.get('province', 'all')
+        disease = request.GET.get('disease', 'all')
+
+        # Requête de base pour les zones
+        zones_qs = HealthZone.objects.all()
+        if province != 'all':
+            zones_qs = zones_qs.filter(territory__province__name=province)
+
+        zones_data = []
+        # Limiter aux zones qui ont des données historiques
+        zones_with_data = zones_qs.filter(
+            clinicaldata__disease_name=disease if disease != 'all' else None
+        ).distinct()[:100]  # Limite pour performance
+
+        for zone in zones_with_data:
+            # Si une maladie est spécifiée, calculer la récurrence pour cette maladie
+            # Sinon, calculer pour toutes les maladies de la zone
+            if disease != 'all':
+                recurrence = DiseaseAnalyzer.get_recurrence_percentage(zone, disease)
+                zones_data.append({
+                    'zone_id': zone.id,
+                    'zone_name': zone.name,
+                    'province': zone.province.name if zone.province else 'N/A',
+                    'disease': disease,
+                    'recurrence': recurrence['percentage'],
+                    'active_months': recurrence['active_months'],
+                    'total_months': recurrence['total_months']
+                })
+            else:
+                # Trouver la maladie principale (celle avec le plus de cas)
+                main_disease = ClinicalData.objects.filter(
+                    health_zone=zone
+                ).values('disease_name').annotate(
+                    total=Count('id')
+                ).order_by('-total').first()
+                if main_disease:
+                    recurrence = DiseaseAnalyzer.get_recurrence_percentage(zone, main_disease['disease_name'])
+                    zones_data.append({
+                        'zone_id': zone.id,
+                        'zone_name': zone.name,
+                        'province': zone.province.name if zone.province else 'N/A',
+                        'disease': main_disease['disease_name'],
+                        'recurrence': recurrence['percentage'],
+                        'active_months': recurrence['active_months'],
+                        'total_months': recurrence['total_months']
+                    })
+
+        return JsonResponse({
+            'success': True,
+            'zones': zones_data
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+def pressure_virale_api(request):
+    """
+    API pour le graphique Pression Virale.
+    Retourne le top 10 zones par cas prédits, en privilégiant les modèles robustes (tiers 1-3).
+    """
+    try:
+        disease_filter = request.GET.get('disease', 'all')
+        province_filter = request.GET.get('province', 'all')
+
+        # Query de base
+        preds = Prediction.objects.all().select_related('health_zone')
+
+        # Appliquer les filtres
+        if disease_filter != 'all':
+            preds = preds.filter(disease_name=disease_filter)
+        if province_filter != 'all':
+            preds = preds.filter(health_zone__territory__province__name=province_filter)
+
+        # Récupérer les prédictions triées par cas (décroissant)
+        all_preds = list(preds.order_by('-predicted_cases')[:200])
+
+        # Séparer les prédictions robustes (tier 1-3) des fallbacks (tier 4)
+        robust_preds = []
+        fallback_preds = []
+
+        for p in all_preds:
+            tier = (p.influence_factors or {}).get('tier', 4)
+            if tier < 4:
+                robust_preds.append(p)
+            else:
+                fallback_preds.append(p)
+
+        # Utiliser les robustes en priorité, sinon compléter avec fallbacks
+        # Mais on marque les fallbacks clairement
+        final_preds = robust_preds[:10]
+        if len(final_preds) < 10:
+            # Ajouter des fallbacks pour compléter si nécessaire
+            needed = 10 - len(final_preds)
+            final_preds.extend(fallback_preds[:needed])
+
+        # Prendre le top 10 final
+        top_10 = final_preds[:10]
+
+        data = []
+        for p in top_10:
+            tier = (p.influence_factors or {}).get('tier', 4)
+            model_name = (p.influence_factors or {}).get('model_used', 'Unknown')
+            data.append({
+                'zone_name': p.health_zone.name,
+                'province': p.health_zone.territory.province.name if p.health_zone.territory and p.health_zone.territory.province else 'N/A',
+                'cases': float(p.predicted_cases),
+                'disease': p.disease_name,
+                'model': model_name,
+                'tier': tier,
+                'reliability': (p.influence_factors or {}).get('reliability', 0),
+                'r2': (p.influence_factors or {}).get('r2', 0),
+                'is_fallback': tier == 4  # Flag pour le frontend
+            })
+
+        return JsonResponse({
+            'success': True,
+            'data': data,
+            'robust_count': len(robust_preds),
+            'fallback_count': len(fallback_preds),
+            'message': f"Robust: {len(robust_preds)}, Fallback: {len(fallback_preds)}"
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+            'data': []
+        }, status=500)
+
+
+def stop_task_view(request, task_id):
+    """Arrête une tâche en cours d'exécution."""
+    if request.method == 'POST':
+        try:
+            task_run = TaskRun.objects.get(id=task_id)
+
+            # Vérifier que la tâche est en cours
+            if task_run.status != 'running' or not task_run.process_id:
+                messages.warning(request, f"⚠️ La tâche #{task_id} n'est pas en cours d'exécution.")
+                return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:task_list')))
+
+            # Envoyer SIGTERM au processus
+            try:
+                os.kill(task_run.process_id, signal.SIGTERM)
+                logger.info(f"✅ Signal d'arrêt envoyé au processus {task_run.process_id} (tâche #{task_id})")
+            except ProcessLookupError:
+                # Le processus est déjà terminé
+                logger.warning(f"Processus {task_run.process_id} déjà terminé")
+            except Exception as e:
+                logger.error(f"Erreur lors de l'arrêt du processus {task_run.process_id}: {e}")
+                messages.error(request, f"❌ Erreur lors de l'arrêt: {e}")
+                return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:task_list')))
+
+            # Mettre à jour la tâche
+            task_run.status = 'stopped'
+            task_run.completed_at = timezone.now()
+            task_run.process_id = None
+            task_run.save()
+
+            messages.success(request, f"✅ Tâche #{task_id} arrêtée avec succès.")
+        except TaskRun.DoesNotExist:
+            messages.error(request, f"❌ Tâche #{task_id} introuvable.")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'arrêt de la tâche {task_id}: {e}")
+            messages.error(request, f"❌ Erreur: {str(e)}")
+
+    return HttpResponseRedirect(request.META.get('HTTP_REFERER', reverse('analytics:task_list')))

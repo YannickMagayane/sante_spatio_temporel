@@ -1,473 +1,912 @@
 {% extends 'base.html' %}
-{% load static %}
 {% load custom_filters %}
 
-{% block title %}{{ disease }}{% if province %} - {{ province }}{% endif %} | Prédictions & Analyse Climatique{% endblock %}
+{% block title %}{{ disease }} - Analyse Prédictive | Santé DRC{% endblock %}
 
 {% block extra_css %}
 <style>
-    .chart-section {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        border: 1px solid #475569;
-        border-radius: 12px;
-        padding: 2rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        transition: all 0.3s ease;
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
     }
-    
-    .chart-section:hover {
-        border-color: #64748b;
-        box-shadow: 0 8px 30px rgba(59, 130, 246, 0.2);
+
+    :root {
+        --primary: #0ea5e9;
+        --secondary: #06b6d4;
+        --critical: #ef4444;
+        --success: #22c55e;
+        --warning: #f97316;
+        --bg-dark: #0f172a;
+        --bg-darker: #1a1f35;
+        --border-dark: #475569;
+        --text-light: #e2e8f0;
+        --text-muted: #94a3b8;
     }
-    
-    .chart-container {
-        position: relative;
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 400px;
-    }
-    
-    .chart-container img {
-        max-width: 100%;
-        height: auto;
-        display: block;
-        border-radius: 8px;
-        box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.2);
-    }
-    
-    .forecast-card {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
-    }
-    
-    .forecast-item {
-        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-        border: 2px solid #60a5fa;
-        border-radius: 12px;
-        padding: 1.5rem;
-        text-align: center;
-    }
-    
-    .forecast-item.high-risk {
-        background: linear-gradient(135deg, #991b1b 0%, #ef4444 100%);
-        border-color: #fca5a5;
-    }
-    
-    .forecast-item h3 {
-        font-size: 14px;
-        color: #e0e7ff;
-        margin-bottom: 0.5rem;
-        font-weight: bold;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    
-    .forecast-value {
-        font-size: 32px;
-        font-weight: 900;
-        color: #fff;
-        margin: 0.5rem 0;
-    }
-    
-    .forecast-subtext {
-        font-size: 12px;
-        color: rgba(255, 255, 255, 0.8);
-    }
-    
-    .climate-insight {
-        background: rgba(34, 197, 94, 0.1);
-        border-left: 4px solid #22c55e;
-        border-radius: 6px;
-        padding: 1rem;
-        margin: 1rem 0;
-        font-size: 13px;
-        color: #86efac;
+
+    html, body {
+        background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-darker) 100%);
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        color: var(--text-light);
         line-height: 1.6;
+        min-height: 100vh;
     }
-    
-    .climate-insight.negative {
-        background: rgba(239, 68, 68, 0.1);
-        border-left-color: #ef4444;
-        color: #fca5a5;
+
+    /* =================== HEADER =================== */
+    .header-hero {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        padding: 4rem 2rem;
+        text-align: left;
+        box-shadow: 0 15px 50px rgba(14, 165, 233, 0.25);
+        margin-bottom: 3rem;
     }
-    
-    .correlation-badges {
+
+    .header-content {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .header-hero h1 {
+        font-size: 4rem;
+        font-weight: 950;
+        color: white;
+        margin-bottom: 0.5rem;
+        text-shadow: 0 3px 15px rgba(0, 0, 0, 0.2);
+        letter-spacing: -1px;
+    }
+
+    .header-hero p {
+        font-size: 1.25rem;
+        color: rgba(255, 255, 255, 0.98);
+        margin-bottom: 1.5rem;
+        font-weight: 500;
+    }
+
+    .header-badges {
         display: flex;
-        gap: 1rem;
+        gap: 0.8rem;
         flex-wrap: wrap;
         margin-top: 1rem;
     }
-    
-    .badge {
-        background: rgba(59, 130, 246, 0.2);
-        border: 1px solid #3b82f6;
-        border-radius: 20px;
-        padding: 0.5rem 1rem;
-        font-size: 12px;
-        color: #93c5fd;
+
+    .header-badge {
+        background: rgba(255, 255, 255, 0.25);
+        border: 1.5px solid rgba(255, 255, 255, 0.5);
+        padding: 0.6rem 1.2rem;
+        border-radius: 50px;
+        font-size: 0.9rem;
         font-weight: 600;
+        color: white;
+        backdrop-filter: blur(10px);
+        transition: all 0.3s ease;
     }
-    
-    .badge.strong {
-        background: rgba(34, 197, 94, 0.2);
-        border-color: #22c55e;
-        color: #86efac;
+
+    .header-badge:hover {
+        background: rgba(255, 255, 255, 0.35);
+        transform: translateY(-2px);
     }
-    
-    .badge.warning {
-        background: rgba(245, 158, 11, 0.2);
-        border-color: #f59e0b;
-        color: #fcd34d;
+
+    /* =================== MAIN CONTAINER =================== */
+    .main-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 2rem 4rem;
     }
-    
-    .data-missing {
-        background: rgba(107, 114, 128, 0.2);
-        border: 2px dashed #6b7280;
-        border-radius: 8px;
-        padding: 2rem;
-        text-align: center;
-        color: #9ca3af;
-    }
-    
+
+    /* =================== SECTION TITLE =================== */
     .section-header {
         display: flex;
         align-items: center;
         gap: 1rem;
-        margin-bottom: 1.5rem;
-        padding-bottom: 1rem;
-        border-bottom: 2px solid #475569;
+        margin-bottom: 2.5rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 3px solid var(--primary);
     }
-    
+
+    .section-header .icon {
+        font-size: 2.5rem;
+    }
+
     .section-header h2 {
+        font-size: 2rem;
+        font-weight: 850;
+        color: var(--text-light);
         margin: 0;
-        font-size: 24px;
-        color: #f1f5f9;
-        font-weight: 900;
     }
-    
-    .section-icon {
-        font-size: 32px;
+
+    /* =================== FORECAST CARDS =================== */
+    .forecast-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-bottom: 4rem;
     }
-    
-    .interpretation-box {
-        background: rgba(30, 41, 59, 0.8);
-        border: 1px solid #64748b;
-        border-radius: 8px;
-        padding: 1.5rem;
-        margin-top: 1.5rem;
-        font-size: 13px;
-        line-height: 1.8;
-        color: #cbd5e1;
-    }
-    
-    .next-month-banner {
-        background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-        border-radius: 12px;
-        padding: 2rem;
-        margin-bottom: 2rem;
-        color: white;
+
+    .forecast-card {
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+        border: 2px solid var(--border-dark);
+        border-radius: 16px;
+        padding: 2.5rem 2rem;
         text-align: center;
-        box-shadow: 0 4px 20px rgba(249, 115, 22, 0.3);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        backdrop-filter: blur(12px);
+        position: relative;
+        overflow: hidden;
     }
-    
-    .next-month-banner h3 {
-        font-size: 16px;
-        margin: 0 0 0.5rem 0;
-        opacity: 0.9;
+
+    .forecast-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--primary), var(--secondary));
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.4s ease;
+    }
+
+    .forecast-card:hover {
+        border-color: var(--primary);
+        box-shadow: 0 20px 50px rgba(14, 165, 233, 0.3);
+        transform: translateY(-8px);
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(6, 182, 212, 0.05) 100%),
+                    linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+    }
+
+    .forecast-card:hover::before {
+        transform: scaleX(1);
+    }
+
+    .forecast-card.critical {
+        border-color: var(--critical);
+    }
+
+    .forecast-card.critical:hover {
+        box-shadow: 0 20px 50px rgba(239, 68, 68, 0.3);
+        border-color: var(--critical);
+    }
+
+    .forecast-card.critical::before {
+        background: linear-gradient(90deg, var(--critical), #dc2626);
+    }
+
+    .card-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        color: var(--text-muted);
+        font-weight: 800;
+        margin-bottom: 1.2rem;
+    }
+
+    .card-value {
+        font-size: 3.2rem;
+        font-weight: 950;
+        color: var(--primary);
+        margin: 1rem 0;
+        line-height: 1.1;
+        word-break: break-word;
+    }
+
+    .forecast-card.critical .card-value {
+        color: var(--critical);
+    }
+
+    .card-desc {
+        font-size: 0.95rem;
+        color: var(--text-muted);
+        font-weight: 500;
+    }
+
+    /* =================== CHART SECTION =================== */
+    .chart-section {
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+        border: 2px solid var(--border-dark);
+        border-radius: 16px;
+        padding: 3rem;
+        margin-bottom: 4rem;
+        backdrop-filter: blur(12px);
+        transition: all 0.4s ease;
+    }
+
+    .chart-section:hover {
+        border-color: var(--primary);
+        box-shadow: 0 20px 50px rgba(14, 165, 233, 0.15);
+    }
+
+    .chart-section h3 {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        font-size: 1.6rem;
+        font-weight: 850;
+        color: var(--text-light);
+        margin-bottom: 2.5rem;
+    }
+
+    .chart-section h3 .icon {
+        font-size: 2rem;
+    }
+
+    .chart-display {
+        background: linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.2) 100%);
+        border-radius: 14px;
+        padding: 2rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 550px;
+        overflow: auto;
+        margin-bottom: 2rem;
+        border: 1px solid rgba(14, 165, 233, 0.3);
+        box-shadow: 
+            0 20px 60px rgba(0, 0, 0, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        position: relative;
+    }
+
+    .chart-display::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(14, 165, 233, 0.5), transparent);
+    }
+
+    .chart-display img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 12px;
+        filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.5)) contrast(1.05);
+        transition: filter 0.3s ease;
+    }
+
+    .chart-display:hover img {
+        filter: drop-shadow(0 15px 40px rgba(14, 165, 233, 0.3)) contrast(1.1);
+    }
+
+    .chart-info {
+        background: rgba(14, 165, 233, 0.15);
+        border-left: 4px solid var(--primary);
+        padding: 1.5rem;
+        border-radius: 10px;
+        font-size: 0.95rem;
+        color: var(--text-light);
+        line-height: 1.8;
+    }
+
+    .chart-info strong {
+        color: var(--primary);
+    }
+
+    /* =================== STATS GRID =================== */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin: 2.5rem 0;
+    }
+
+    .stat-card {
+        background: linear-gradient(135deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.3) 100%);
+        border: 1.5px solid var(--border-dark);
+        border-radius: 14px;
+        padding: 1.8rem;
+        text-align: center;
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, var(--primary), var(--secondary));
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.4s ease;
+    }
+
+    .stat-card:hover {
+        border-color: var(--primary);
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(6, 182, 212, 0.06) 100%);
+        box-shadow: 0 15px 40px rgba(14, 165, 233, 0.25);
+        transform: translateY(-5px);
+    }
+
+    .stat-card:hover::before {
+        transform: scaleX(1);
+    }
+
+    .stat-value {
+        font-size: 2.4rem;
+        font-weight: 950;
+        color: var(--primary);
+        margin: 1rem 0;
+        transition: color 0.3s ease;
+    }
+
+    /* Barre de progression pour les stat-card */
+    .stat-meter {
+        width: 100%;
+        height: 5px;
+        background: rgba(71, 85, 105, 0.3);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 0.8rem;
+    }
+
+    .stat-meter-fill {
+        height: 100%;
+        border-radius: 10px;
+        background: linear-gradient(90deg, #3b82f6, #0ea5e9);
+        transition: width 0.5s ease;
+        min-width: 2%;
+    }
+
+    .stat-card.low .stat-value {
+        color: var(--critical);
+    }
+
+    .stat-card.low .stat-meter-fill {
+        background: linear-gradient(90deg, #ef4444, #f87171);
+    }
+
+    .stat-card.medium .stat-value {
+        color: var(--warning);
+    }
+
+    .stat-card.medium .stat-meter-fill {
+        background: linear-gradient(90deg, #f97316, #fb923c);
+    }
+
+    .stat-card.high .stat-value {
+        color: var(--success);
+    }
+
+    .stat-card.high .stat-meter-fill {
+        background: linear-gradient(90deg, #22c55e, #4ade80);
+    }
+
+    /* =================== DATA TABLE =================== */
+    .data-table {
+        width: 100%;
+        margin-top: 2rem;
+        border-collapse: collapse;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid var(--border-dark);
+    }
+
+    .data-table thead {
+        background: linear-gradient(90deg, rgba(14, 165, 233, 0.25) 0%, rgba(6, 182, 212, 0.15) 100%);
+        border-bottom: 2px solid var(--primary);
+    }
+
+    .data-table th {
+        padding: 1.2rem;
+        text-align: left;
+        font-weight: 800;
+        color: var(--primary);
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .data-table td {
+        padding: 1.2rem;
+        border-bottom: 1px solid rgba(71, 85, 105, 0.3);
+        font-size: 0.95rem;
+        color: var(--text-light);
+    }
+
+    .data-table tbody tr {
+        transition: all 0.3s ease;
+    }
+
+    .data-table tbody tr:hover {
+        background: rgba(14, 165, 233, 0.12);
+    }
+
+    .data-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    /* =================== RECOMMENDATION BOX =================== */
+    .recommendations-box {
+        background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(20, 184, 166, 0.15) 100%);
+        border: 2px solid var(--success);
+        border-radius: 16px;
+        padding: 3rem;
+        margin-bottom: 4rem;
+    }
+
+    .recommendations-box.critical {
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%);
+        border-color: var(--critical);
+    }
+
+    .recommendations-box h3 {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        font-size: 1.6rem;
+        font-weight: 850;
+        color: var(--text-light);
+        margin-bottom: 2rem;
+    }
+
+    .recommendations-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .rec-item {
+        background: rgba(15, 23, 42, 0.8);
+        border-left: 4px solid var(--success);
+        padding: 1.5rem;
+        border-radius: 10px;
+        font-size: 0.95rem;
+        line-height: 1.7;
+        color: var(--text-light);
+        transition: all 0.3s ease;
+    }
+
+    .recommendations-box.critical .rec-item {
+        border-left-color: var(--critical);
+    }
+
+    .rec-item:hover {
+        transform: translateX(5px);
+        background: rgba(15, 23, 42, 0.95);
+    }
+
+    /* =================== PROVINCE SELECTOR =================== */
+    .province-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 1.2rem;
+        margin: 2.5rem 0;
+    }
+
+    .province-btn {
+        display: block;
+        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+        border: 2px solid #60a5fa;
+        padding: 1.3rem;
+        border-radius: 14px;
+        text-align: center;
+        color: white;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 0.95rem;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        cursor: pointer;
+    }
+
+    .province-btn:hover {
+        border-color: #93c5fd;
+        box-shadow: 0 15px 40px rgba(59, 130, 246, 0.35);
+        transform: translateY(-5px);
+        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+    }
+
+    /* =================== NO DATA MESSAGE =================== */
+    .no-data-box {
+        background: rgba(0, 0, 0, 0.4);
+        border: 2px dashed var(--border-dark);
+        border-radius: 16px;
+        padding: 5rem 2rem;
+        text-align: center;
+        color: var(--text-muted);
+    }
+
+    .no-data-icon {
+        font-size: 5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .no-data-title {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--text-light);
+        margin-bottom: 1rem;
+    }
+
+    /* =================== BADGES & INDICATORS =================== */
+    .badge-persistence {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.4rem 0.9rem;
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(220, 38, 38, 0.1) 100%);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        border-radius: 16px;
+        font-size: 0.7rem;
+        font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-    }
-    
-    .next-month-banner .month {
-        font-size: 42px;
-        font-weight: 900;
+        color: #fca5a5;
         margin: 0.5rem 0;
+    }
+
+    .badge-low {
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.1) 100%);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #fecaca;
+    }
+
+    .badge-medium {
+        background: linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(234, 88, 12, 0.1) 100%);
+        border-color: rgba(249, 115, 22, 0.3);
+        color: #fed7aa;
+    }
+
+    .badge-high {
+        background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.1) 100%);
+        border-color: rgba(34, 197, 94, 0.3);
+        color: #bbf7d0;
+    }
+
+    .confidence-context {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
+        border-left: 3px solid var(--primary);
+        border-radius: 8px;
+        padding: 0.8rem 1rem;
+        margin-top: 1rem;
+        font-size: 0.8rem;
+        color: var(--text-light);
+        line-height: 1.5;
+    }
+
+    .confidence-context strong {
+        color: var(--primary);
+    }
+
+    /* Fiabilité bar dans les cartes */
+    .reliability-bar {
+        width: 100%;
+        height: 4px;
+        background: rgba(71, 85, 105, 0.3);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 0.8rem;
+    }
+
+    .reliability-bar-fill {
+        height: 100%;
+        border-radius: 10px;
+        background: linear-gradient(90deg, #ef4444 0%, #f97316 50%, #22c55e 100%);
+        transition: width 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        min-width: 3%;
+    }
+
+    /* =================== RESPONSIVE =================== */
+    @media (max-width: 768px) {
+        .header-hero h1 {
+            font-size: 2.5rem;
+        }
+
+        .header-hero {
+            padding: 2.5rem 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .main-container {
+            padding: 0 1rem 2rem;
+        }
+
+        .section-header h2 {
+            font-size: 1.4rem;
+        }
+
+        .chart-display {
+            min-height: 350px;
+            padding: 1rem;
+        }
+
+        .chart-section {
+            padding: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .forecast-container {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+
+        .forecast-card {
+            padding: 1.8rem 1.5rem;
+        }
+
+        .card-value {
+            font-size: 2.4rem;
+        }
+
+        .recommendations-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .province-grid {
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 1rem;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-    
-    <!-- Header -->
-    <div class="bg-gradient-to-r from-cyan-600 to-blue-700 text-white py-12 px-6 shadow-2xl">
-        <div class="max-w-7xl mx-auto">
-            <div class="flex items-center gap-4 mb-4">
-                <div class="text-5xl">🦠</div>
-                <div>
-                    <h1 class="text-5xl font-black mb-2">{{ disease }}</h1>
-                    {% if province %}<p class="text-lg text-cyan-100">Province: <strong>{{ province }}</strong></p>{% endif %}
-                    <p class="text-cyan-100">Prédictions Mensuelles &amp; Analyse Climatique</p>
-                </div>
-            </div>
+<!-- Header -->
+<div class="header-hero">
+    <div class="header-content">
+        <h1>🦠 {{ disease }}</h1>
+        {% if province %}
+            <p>📍 <strong>Province:</strong> {{ province }}</p>
+        {% else %}
+            <p>🗺️ Analyse Nationale</p>
+        {% endif %}
+        <div class="header-badges">
+            <span class="header-badge">📊 Prédictions Avancées</span>
+            <span class="header-badge">🌡️ Analyse Climatique</span>
+            <span class="header-badge">🤖 Intelligence IA</span>
         </div>
     </div>
+</div>
 
-    <div class="max-w-7xl mx-auto px-6 py-8">
-        
-        <!-- DATA AVAILABILITY CHECK -->
-        {% if not has_data %}
-        <div class="data-missing">
-            <div style="font-size: 48px; margin-bottom: 1rem;">📭</div>
-            <p style="font-size: 16px; margin-bottom: 0.5rem;">Données épidémiologiques non disponibles</p>
-            <p style="font-size: 13px; opacity: 0.7;">Les données pour {{ disease }}{% if province %} dans {{ province }}{% endif %} ne sont pas encore disponibles dans notre base de données.</p>
+<!-- Main Content -->
+<div class="main-container">
+    {% if not has_data %}
+        <!-- No Data Message -->
+        <div class="no-data-box">
+            <div class="no-data-icon">📭</div>
+            <div class="no-data-title">Aucune Donnée Disponible</div>
+            <p>Les données pour <strong>{{ disease }}</strong>{% if province %} dans <strong>{{ province }}</strong>{% endif %} ne sont pas disponibles pour le moment.</p>
         </div>
-        {% else %}
-        
-        <!-- NEXT MONTH FORECAST BANNER -->
-        {% if forecast %}
-        <div class="next-month-banner">
-            <h3>⭐ Prédiction du Prochain Mois</h3>
-            <div class="month">{{ next_month }}</div>
-            <div style="font-size: 28px; font-weight: bold;">{{ forecast.predicted_cases|floatformat:0 }} cas prédits</div>
-            <div style="font-size: 13px; margin-top: 1rem; opacity: 0.9;">Confiance: {% widthratio forecast.reliability 1 100 %}%</div>
+    {% else %}
+
+    <!-- Forecast Section -->
+    {% if forecast %}
+    <section>
+        <div class="section-header">
+            <span class="icon">⭐</span>
+            <h2>Prédiction du Mois Prochain</h2>
         </div>
-        {% endif %}
         
-        <!-- FORECAST CARDS -->
-        {% if forecast %}
-        <div class="forecast-card">
-            <div class="forecast-item {% if forecast.predicted_cases > 1000 %}high-risk{% endif %}">
-                <h3>📊 Cas Prédits</h3>
-                <div class="forecast-value">{{ forecast.predicted_cases|floatformat:0 }}</div>
-                <div class="forecast-subtext">Mois prochain ({{ next_month }})</div>
+        <div class="forecast-container">
+            <div class="forecast-card {% if forecast.predicted_cases > 1000 %}critical{% endif %}">
+                <div class="card-label">📊 Cas Prédits</div>
+                <div class="card-value">{{ forecast.predicted_cases|floatformat:0 }}</div>
+                <div class="card-desc">{{ next_month }}</div>
             </div>
-            
-            <div class="forecast-item">
-                <h3>📍 Niveau</h3>
-                <div class="forecast-value" style="font-size: 24px;">
+
+            <div class="forecast-card">
+                <div class="card-label">⚠️ Niveau de Risque</div>
+                <div class="card-value" style="font-size: 2rem;">
                     {% if forecast.predicted_cases > 5000 %}🔴 CRITIQUE
                     {% elif forecast.predicted_cases > 1000 %}🟠 ÉLEVÉ
                     {% elif forecast.predicted_cases > 100 %}🟡 MODÉRÉ
                     {% else %}🟢 BAS{% endif %}
                 </div>
-                <div class="forecast-subtext">Évaluation du risque</div>
+                <div class="card-desc">Évaluation du risque</div>
             </div>
-            
-            <div class="forecast-item">
-                <h3>✅ Fiabilité</h3>
-                <div class="forecast-value">{% widthratio forecast.reliability 1 100 %}%</div>
-                <div class="forecast-subtext">Score de modèle (R²)</div>
-            </div>
-        </div>
-        {% endif %}
-        
-        <!-- 1. MONTHLY FORECAST CHART -->
-        {% if monthly_forecast %}
-        <div class="chart-section">
-            <div class="section-header">
-                <span class="section-icon">📈</span>
-                <h2>Prévision Mensuelle Détaillée</h2>
-            </div>
-            <div class="chart-container">
-                <img src="{{ monthly_forecast }}" alt="Monthly Forecast">
-            </div>
-            <div class="interpretation-box">
-                <strong>📌 Interprétation:</strong> Ce graphique montre l'historique complet en bleu et la prédiction pour le mois prochain en rouge. 
-                La ligne pointillée orange indique la tendance entre la dernière observation et la prédiction.
-            </div>
-        </div>
-        {% endif %}
-        
-        <!-- 2. CLIMATE IMPACT CHART -->
-        {% if climate_impact and has_climate_data %}
-        <div class="chart-section">
-            <div class="section-header">
-                <span class="section-icon">🌡️</span>
-                <h2>Impact du Climat sur {{ disease }}</h2>
-            </div>
-            
-            <!-- Climate Interpretation -->
-            <div style="margin-bottom: 1.5rem;">
-                {% if climate_impact.interpretation %}
-                <div class="climate-insight">
-                    <strong>🔍 Découverte:</strong> {{ climate_impact.interpretation }}
+
+            <div class="forecast-card">
+                <div class="card-label">✅ Fiabilité Model</div>
+                <div class="card-value">{% widthratio forecast.reliability 1 100 %}%</div>
+                <div class="reliability-bar">
+                    <div class="reliability-bar-fill" style="width: {% widthratio forecast.reliability 1 100 %}%"></div>
                 </div>
+                {% if forecast.reliability < 60 %}
+                <span class="badge-persistence">⚠️ Mode Fallback (Persistence)</span>
+                {% elif forecast.reliability < 80 %}
+                <span class="badge-medium">📊 Fiabilité Partielle</span>
+                {% else %}
+                <span class="badge-high">✅ Modèle Fiable</span>
                 {% endif %}
-                
-                <!-- Correlation Badges -->
-                {% if climate_impact.correlations %}
-                <div class="correlation-badges">
-                    {% with temp=climate_impact.correlations.temperature precp=climate_impact.correlations.precipitation humid=climate_impact.correlations.humidity %}
-                        
-                        {% if temp %}
-                        <div class="badge {% if temp|abs > 0.5 %}strong{% elif temp|abs > 0.3 %}warning{% endif %}">
-                            🌡️ Température: {{ temp|floatformat:3 }}
-                        </div>
-                        {% endif %}
-                        
-                        {% if precp %}
-                        <div class="badge {% if precp|abs > 0.5 %}strong{% elif precp|abs > 0.3 %}warning{% endif %}">
-                            💧 Précipitations: {{ precp|floatformat:3 }}
-                        </div>
-                        {% endif %}
-                        
-                        {% if humid %}
-                        <div class="badge {% if humid|abs > 0.5 %}strong{% elif humid|abs > 0.3 %}warning{% endif %}">
-                            💨 Humidité: {{ humid|floatformat:3 }}
-                        </div>
-                        {% endif %}
-                    {% endwith %}
+                <div class="card-desc">Score du modèle (R²)</div>
+                {% if forecast.reliability < 60 %}
+                <div class="confidence-context">
+                    💡 <strong>Données insuffisantes</strong> - Le modèle utilise un fallback (Persistence) basé sur les tendances historiques. Les prédictions sont moins précises mais offrent une base de stabilité.
                 </div>
                 {% endif %}
             </div>
-            
-            <!-- Climate Chart -->
-            {% if climate_impact %}
-            <div class="chart-container">
-                <img src="{{ climate_impact }}" alt="Climate Impact Analysis">
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Monthly Forecast Chart -->
+    {% if monthly_forecast %}
+    <section>
+        <div class="chart-section">
+            <h3>
+                <span class="icon">📈</span>
+                Évolution Historique et Prédiction Mensuelle
+            </h3>
+            <div class="chart-display">
+                <img src="{{ monthly_forecast }}" alt="Prédiction Mensuelle">
             </div>
-            <div class="interpretation-box">
-                <strong>📊 Panneaux du graphique:</strong>
-                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                    <li><strong>Haut:</strong> Température (orange) et Précipitations (bleu) vs Cas (rouge)</li>
-                    <li><strong>Bas:</strong> Coefficients de corrélation de Pearson (force de la relation linéaire)</li>
-                </ul>
-                <p style="margin-top: 0.5rem;">Valeurs > 0.5: Corrélation forte | 0.3-0.5: Modérée | < 0.3: Faible</p>
+            <div class="chart-info">
+                <strong>📌 Interprétation:</strong> Le graphique affiche l'historique des cas détectés (courbe bleue) et la prédiction pour le mois prochain (point rouge). 
+                Les pics observés correspondent généralement aux saisons de forte transmission.
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Climate Impact -->
+    {% if has_climate_data %}
+    <section>
+        <div class="chart-section">
+            <h3>
+                <span class="icon">🌡️</span>
+                Impact Climatique sur la Maladie
+            </h3>
+
+            {% if climate_data.correlations %}
+            <div class="stats-grid">
+                {% if climate_data.correlations.temperature %}
+                <div class="stat-card {% if climate_data.correlations.temperature|abs > 0.5 %}high{% elif climate_data.correlations.temperature|abs > 0.3 %}medium{% else %}low{% endif %}">
+                    <div class="stat-label">🌡️ Température</div>
+                    <div class="stat-value">{{ climate_data.correlations.temperature|floatformat:2 }}</div>
+                    <div class="stat-meter">
+                        <div class="stat-meter-fill" style="width: {% widthratio climate_data.correlations.temperature|abs 1 1 %}%"></div>
+                    </div>
+                    {% if climate_data.correlations.temperature|abs > 0.5 %}
+                        <span class="badge-high">⭐ Forte Influence</span>
+                    {% elif climate_data.correlations.temperature|abs > 0.3 %}
+                        <span class="badge-medium">📊 Influence Modérée</span>
+                    {% else %}
+                        <span class="badge-low">❌ Faible Lien</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                {% if climate_data.correlations.precipitation %}
+                <div class="stat-card {% if climate_data.correlations.precipitation|abs > 0.5 %}high{% elif climate_data.correlations.precipitation|abs > 0.3 %}medium{% else %}low{% endif %}">
+                    <div class="stat-label">💧 Précipitations</div>
+                    <div class="stat-value">{{ climate_data.correlations.precipitation|floatformat:2 }}</div>
+                    <div class="stat-meter">
+                        <div class="stat-meter-fill" style="width: {% widthratio climate_data.correlations.precipitation|abs 1 1 %}%"></div>
+                    </div>
+                    {% if climate_data.correlations.precipitation|abs > 0.5 %}
+                        <span class="badge-high">⭐ Forte Influence</span>
+                    {% elif climate_data.correlations.precipitation|abs > 0.3 %}
+                        <span class="badge-medium">📊 Influence Modérée</span>
+                    {% else %}
+                        <span class="badge-low">❌ Faible Lien</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                {% if climate_data.correlations.humidity %}
+                <div class="stat-card {% if climate_data.correlations.humidity|abs > 0.5 %}high{% elif climate_data.correlations.humidity|abs > 0.3 %}medium{% else %}low{% endif %}">
+                    <div class="stat-label">💨 Humidité</div>
+                    <div class="stat-value">{{ climate_data.correlations.humidity|floatformat:2 }}</div>
+                    <div class="stat-meter">
+                        <div class="stat-meter-fill" style="width: {% widthratio climate_data.correlations.humidity|abs 1 1 %}%"></div>
+                    </div>
+                    {% if climate_data.correlations.humidity|abs > 0.5 %}
+                        <span class="badge-high">⭐ Forte Influence</span>
+                    {% elif climate_data.correlations.humidity|abs > 0.3 %}
+                        <span class="badge-medium">📊 Influence Modérée</span>
+                    {% else %}
+                        <span class="badge-low">❌ Faible Lien</span>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
             {% endif %}
-        </div>
-        {% elif has_climate_data %}
-        <div class="chart-section">
-            <div class="section-header">
-                <span class="section-icon">🌡️</span>
-                <h2>Impact du Climat</h2>
+
+            {% if climate_impact and climate_impact != 'data:image/png;base64,' %}
+            <div class="chart-display">
+                <img src="{{ climate_impact }}" alt="Analyse Climatique">
             </div>
-            <div class="data-missing">
-                <p>Les données climatiques ne sont pas disponibles pour cette période.</p>
-            </div>
-        </div>
-        {% endif %}
-        
-        <!-- 3. CLIMATE COMPARISON CHART (WITH vs WITHOUT) -->
-        {% if climate_comparison %}
-        <div class="chart-section">
-            <div class="section-header">
-                <span class="section-icon">⚖️</span>
-                <h2>Influence Climatique: Avec vs Sans</h2>
-            </div>
-            <div class="chart-container">
-                <img src="{{ climate_comparison }}" alt="Climate Comparison">
-            </div>
-            <div class="interpretation-box">
-                <strong>📌 Ce que vous voyez:</strong>
-                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                    <li><strong>Ligne pointillée bleue:</strong> Tendance attendue SANS facteurs climatiques (ligne de base)</li>
-                    <li><strong>Ligne rouge:</strong> Données RÉELLES observées (avec influence climatique)</li>
-                    <li><strong>Zone orange:</strong> L'écart représente l'impact pur du climat</li>
-                </ul>
+            {% endif %}
+
+            <div class="chart-info">
+                <strong>📊 Corrélation:</strong> Mesure la force de la relation entre climat et maladie (-1 à +1). 
+                Une valeur proche de ±1 indique une forte influence.
             </div>
         </div>
-        {% endif %}
-        
-        <!-- 4. ZONE-LEVEL PREDICTIONS (if province selected) -->
-        {% if province and zone_predictions %}
+    </section>
+    {% endif %}
+
+    <!-- Zone Predictions -->
+    {% if province and zone_predictions %}
+    <section>
         <div class="chart-section">
-            <div class="section-header">
-                <span class="section-icon">📍</span>
-                <h2>Prédictions par Zone de Santé</h2>
-            </div>
-            <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                    <thead>
-                        <tr style="border-bottom: 2px solid #475569;">
-                            <th style="text-align: left; padding: 0.75rem; color: #e2e8f0; font-weight: bold;">Zone de Santé</th>
-                            <th style="text-align: right; padding: 0.75rem; color: #e2e8f0; font-weight: bold;">Cas Prédits</th>
-                            <th style="text-align: center; padding: 0.75rem; color: #e2e8f0; font-weight: bold;">% Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for zone in zone_predictions|slice:":15" %}
-                        <tr style="border-bottom: 1px solid #334155; background: {% cycle '#1e293b' '#0f172a' %};">
-                            <td style="padding: 0.75rem; color: #cbd5e1;">{{ zone.zone_name }}</td>
-                            <td style="text-align: right; padding: 0.75rem; color: #60a5fa; font-weight: bold;">{{ zone.predicted_cases|floatformat:0 }}</td>
-                            <td style="text-align: center; padding: 0.75rem; color: #a1e34d;">
-                                {% if total_predicted_cases > 0 %}
-                                {% widthratio zone.predicted_cases total_predicted_cases 100 %}%
-                                {% else %}
-                                0%
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+            <h3>
+                <span class="icon">📍</span>
+                Prédictions par Zone de Santé
+            </h3>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>🏥 Zone de Santé</th>
+                        <th style="text-align: right;">📊 Cas Prédits</th>
+                        <th style="text-align: center;">📈 % du Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for zone in zone_predictions|slice:":15" %}
+                    <tr>
+                        <td>{{ zone.zone_name }}</td>
+                        <td style="text-align: right; color: var(--primary); font-weight: bold;">
+                            {{ zone.predicted_cases|floatformat:0 }}
+                        </td>
+                        <td style="text-align: center; color: var(--success);">
+                            {% widthratio zone.predicted_cases total_predicted_cases 100 %}%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
             {% if zone_predictions|length > 15 %}
-            <p style="margin-top: 1rem; font-size: 12px; color: #94a3b8;">
-                Affichage des 15 zones principales ({{ zone_predictions|length }} au total)
+            <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
+                📌 Affichage des 15 zones prioritaires ({{ zone_predictions|length }} au total)
             </p>
             {% endif %}
         </div>
-        {% endif %}
-        
-        <!-- 5. RECOMMENDATIONS -->
-        {% if recommendations %}
-        <div class="chart-section" style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(20, 184, 166, 0.1) 100%); border-color: #22c55e;">
-            <div class="section-header" style="border-bottom-color: #22c55e;">
-                <span class="section-icon">{{ recommendations.icon }}</span>
-                <h2>{{ recommendations.title }}</h2>
-            </div>
-            
-            {% if recommendations.risk_level %}
-            <div style="background: rgba(20, 184, 166, 0.2); border-left: 4px solid #14b8a6; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
-                <div style="font-size: 18px; font-weight: bold; color: #2dd4bf;">{{ recommendations.risk_level }}</div>
-                <div style="color: #99f6e4; margin-top: 0.5rem;">{{ recommendations.urgency }}</div>
-            </div>
-            {% endif %}
-            
-            <ul style="margin: 0; padding-left: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+    </section>
+    {% endif %}
+
+    <!-- Recommendations -->
+    {% if recommendations %}
+    <section>
+        <div class="recommendations-box {% if recommendations.risk_level == 'CRITIQUE' %}critical{% endif %}">
+            <h3>
+                <span class="icon">{{ recommendations.icon }}</span>
+                {{ recommendations.title }}
+            </h3>
+
+            <div class="recommendations-grid">
                 {% for action in recommendations.actions %}
-                <li style="background: rgba(30, 41, 59, 0.6); border-left: 4px solid #22c55e; padding: 1rem; border-radius: 6px; color: #86efac; line-height: 1.6;">
-                    {{ action }}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-        
-        <!-- 6. PROVINCE SELECTOR (if national view) -->
-        {% if not province %}
-        <div class="chart-section">
-            <div class="section-header">
-                <span class="section-icon">🗺️</span>
-                <h2>Analyse par Province</h2>
-            </div>
-            <p style="color: #cbd5e1; margin-bottom: 1.5rem;">Sélectionnez une province pour voir l'analyse détaillée avec données climatiques régionales:</p>
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem;">
-                {% for prov in provinces %}
-                <a href="?disease={{ disease }}&province={{ prov.name }}" 
-                   style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); border: 1px solid #60a5fa; padding: 1rem; border-radius: 8px; text-align: center; color: white; text-decoration: none; font-weight: bold; transition: all 0.3s ease;"
-                   onmouseover="this.style.borderColor='#93c5fd'; this.style.boxShadow='0 0 20px rgba(59, 130, 246, 0.4)';"
-                   onmouseout="this.style.boxShadow='none'; this.style.borderColor='#60a5fa';">
-                    {{ prov.name }}
-                </a>
+                <div class="rec-item">✓ {{ action }}</div>
                 {% endfor %}
             </div>
         </div>
-        {% else %}
-        <!-- Back to National View -->
-        <div style="text-align: center; margin-top: 2rem;">
-            <a href="?disease={{ disease }}" 
-               style="display: inline-block; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #475569 0%, #334155 100%); border: 1px solid #64748b; color: white; border-radius: 8px; text-decoration: none; font-weight: bold; transition: all 0.3s ease;"
-               onmouseover="this.style.background='linear-gradient(135deg, #64748b 0%, #475569 100%)'; this.style.borderColor='#94a3b8';"
-               onmouseout="this.style.background='linear-gradient(135deg, #475569 0%, #334155 100%)'; this.style.borderColor='#64748b';">
-                ← Retour à la Vue Nationale
+    </section>
+    {% endif %}
+
+    <!-- Province Selector -->
+    {% if not province %}
+    <section>
+        <div class="section-header">
+            <span class="icon">🗺️</span>
+            <h2>Analyse Détaillée par Province</h2>
+        </div>
+        <p style="color: var(--text-light); margin-bottom: 2rem; font-size: 1rem;">
+            Sélectionnez une province pour accéder à l'analyse complète avec données climatiques:
+        </p>
+        <div class="province-grid">
+            {% for prov in provinces %}
+            <a href="?disease={{ disease }}&province={{ prov.name }}" class="province-btn">
+                {{ prov.name }}
             </a>
+            {% endfor %}
         </div>
-        {% endif %}
-        
-        {% endif %}
-    </div>
+    </section>
+    {% else %}
+    <!-- Back Link -->
+    <section style="text-align: center; margin-top: 4rem; padding: 2rem 0; border-top: 1px solid var(--border-dark);">
+        <a href="?disease={{ disease }}" style="display: inline-block; padding: 1rem 2.5rem; background: linear-gradient(135deg, #475569 0%, #334155 100%); border: 2px solid var(--border-dark); color: white; border-radius: 14px; text-decoration: none; font-weight: 700; font-size: 1rem; transition: all 0.3s ease; cursor: pointer;">
+            ← Retour à la Vue Nationale
+        </a>
+    </section>
+    {% endif %}
+
+    {% endif %}
 </div>
-
-{% endblock %}
-
-{% block extra_js %}
-<!-- All charts are server-side rendered as base64 images -->
 {% endblock %}

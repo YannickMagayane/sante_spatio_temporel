@@ -1,0 +1,473 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}{{ disease }}{% if province %} - {{ province }}{% endif %} | Prédictions & Analyse Climatique{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chart-section {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #475569;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .chart-section:hover {
+        border-color: #64748b;
+        box-shadow: 0 8px 30px rgba(59, 130, 246, 0.2);
+    }
+    
+    .chart-container {
+        position: relative;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 400px;
+    }
+    
+    .chart-container img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        border-radius: 8px;
+        box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.2);
+    }
+    
+    .forecast-card {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .forecast-item {
+        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+        border: 2px solid #60a5fa;
+        border-radius: 12px;
+        padding: 1.5rem;
+        text-align: center;
+    }
+    
+    .forecast-item.high-risk {
+        background: linear-gradient(135deg, #991b1b 0%, #ef4444 100%);
+        border-color: #fca5a5;
+    }
+    
+    .forecast-item h3 {
+        font-size: 14px;
+        color: #e0e7ff;
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .forecast-value {
+        font-size: 32px;
+        font-weight: 900;
+        color: #fff;
+        margin: 0.5rem 0;
+    }
+    
+    .forecast-subtext {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.8);
+    }
+    
+    .climate-insight {
+        background: rgba(34, 197, 94, 0.1);
+        border-left: 4px solid #22c55e;
+        border-radius: 6px;
+        padding: 1rem;
+        margin: 1rem 0;
+        font-size: 13px;
+        color: #86efac;
+        line-height: 1.6;
+    }
+    
+    .climate-insight.negative {
+        background: rgba(239, 68, 68, 0.1);
+        border-left-color: #ef4444;
+        color: #fca5a5;
+    }
+    
+    .correlation-badges {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+    
+    .badge {
+        background: rgba(59, 130, 246, 0.2);
+        border: 1px solid #3b82f6;
+        border-radius: 20px;
+        padding: 0.5rem 1rem;
+        font-size: 12px;
+        color: #93c5fd;
+        font-weight: 600;
+    }
+    
+    .badge.strong {
+        background: rgba(34, 197, 94, 0.2);
+        border-color: #22c55e;
+        color: #86efac;
+    }
+    
+    .badge.warning {
+        background: rgba(245, 158, 11, 0.2);
+        border-color: #f59e0b;
+        color: #fcd34d;
+    }
+    
+    .data-missing {
+        background: rgba(107, 114, 128, 0.2);
+        border: 2px dashed #6b7280;
+        border-radius: 8px;
+        padding: 2rem;
+        text-align: center;
+        color: #9ca3af;
+    }
+    
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #475569;
+    }
+    
+    .section-header h2 {
+        margin: 0;
+        font-size: 24px;
+        color: #f1f5f9;
+        font-weight: 900;
+    }
+    
+    .section-icon {
+        font-size: 32px;
+    }
+    
+    .interpretation-box {
+        background: rgba(30, 41, 59, 0.8);
+        border: 1px solid #64748b;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 1.5rem;
+        font-size: 13px;
+        line-height: 1.8;
+        color: #cbd5e1;
+    }
+    
+    .next-month-banner {
+        background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        color: white;
+        text-align: center;
+        box-shadow: 0 4px 20px rgba(249, 115, 22, 0.3);
+    }
+    
+    .next-month-banner h3 {
+        font-size: 16px;
+        margin: 0 0 0.5rem 0;
+        opacity: 0.9;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .next-month-banner .month {
+        font-size: 42px;
+        font-weight: 900;
+        margin: 0.5rem 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-cyan-600 to-blue-700 text-white py-12 px-6 shadow-2xl">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="text-5xl">🦠</div>
+                <div>
+                    <h1 class="text-5xl font-black mb-2">{{ disease }}</h1>
+                    {% if province %}<p class="text-lg text-cyan-100">Province: <strong>{{ province }}</strong></p>{% endif %}
+                    <p class="text-cyan-100">Prédictions Mensuelles &amp; Analyse Climatique</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 py-8">
+        
+        <!-- DATA AVAILABILITY CHECK -->
+        {% if not has_data %}
+        <div class="data-missing">
+            <div style="font-size: 48px; margin-bottom: 1rem;">📭</div>
+            <p style="font-size: 16px; margin-bottom: 0.5rem;">Données épidémiologiques non disponibles</p>
+            <p style="font-size: 13px; opacity: 0.7;">Les données pour {{ disease }}{% if province %} dans {{ province }}{% endif %} ne sont pas encore disponibles dans notre base de données.</p>
+        </div>
+        {% else %}
+        
+        <!-- NEXT MONTH FORECAST BANNER -->
+        {% if forecast %}
+        <div class="next-month-banner">
+            <h3>⭐ Prédiction du Prochain Mois</h3>
+            <div class="month">{{ next_month }}</div>
+            <div style="font-size: 28px; font-weight: bold;">{{ forecast.predicted_cases|floatformat:0 }} cas prédits</div>
+            <div style="font-size: 13px; margin-top: 1rem; opacity: 0.9;">Confiance: {% widthratio forecast.reliability 1 100 %}%</div>
+        </div>
+        {% endif %}
+        
+        <!-- FORECAST CARDS -->
+        {% if forecast %}
+        <div class="forecast-card">
+            <div class="forecast-item {% if forecast.predicted_cases > 1000 %}high-risk{% endif %}">
+                <h3>📊 Cas Prédits</h3>
+                <div class="forecast-value">{{ forecast.predicted_cases|floatformat:0 }}</div>
+                <div class="forecast-subtext">Mois prochain ({{ next_month }})</div>
+            </div>
+            
+            <div class="forecast-item">
+                <h3>📍 Niveau</h3>
+                <div class="forecast-value" style="font-size: 24px;">
+                    {% if forecast.predicted_cases > 5000 %}🔴 CRITIQUE
+                    {% elif forecast.predicted_cases > 1000 %}🟠 ÉLEVÉ
+                    {% elif forecast.predicted_cases > 100 %}🟡 MODÉRÉ
+                    {% else %}🟢 BAS{% endif %}
+                </div>
+                <div class="forecast-subtext">Évaluation du risque</div>
+            </div>
+            
+            <div class="forecast-item">
+                <h3>✅ Fiabilité</h3>
+                <div class="forecast-value">{% widthratio forecast.reliability 1 100 %}%</div>
+                <div class="forecast-subtext">Score de modèle (R²)</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 1. MONTHLY FORECAST CHART -->
+        {% if monthly_forecast %}
+        <div class="chart-section">
+            <div class="section-header">
+                <span class="section-icon">📈</span>
+                <h2>Prévision Mensuelle Détaillée</h2>
+            </div>
+            <div class="chart-container">
+                <img src="{{ monthly_forecast }}" alt="Monthly Forecast">
+            </div>
+            <div class="interpretation-box">
+                <strong>📌 Interprétation:</strong> Ce graphique montre l'historique complet en bleu et la prédiction pour le mois prochain en rouge. 
+                La ligne pointillée orange indique la tendance entre la dernière observation et la prédiction.
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 2. CLIMATE IMPACT CHART -->
+        {% if climate_impact and has_climate_data %}
+        <div class="chart-section">
+            <div class="section-header">
+                <span class="section-icon">🌡️</span>
+                <h2>Impact du Climat sur {{ disease }}</h2>
+            </div>
+            
+            <!-- Climate Interpretation -->
+            <div style="margin-bottom: 1.5rem;">
+                {% if climate_impact.interpretation %}
+                <div class="climate-insight">
+                    <strong>🔍 Découverte:</strong> {{ climate_impact.interpretation }}
+                </div>
+                {% endif %}
+                
+                <!-- Correlation Badges -->
+                {% if climate_impact.correlations %}
+                <div class="correlation-badges">
+                    {% with temp=climate_impact.correlations.temperature precp=climate_impact.correlations.precipitation humid=climate_impact.correlations.humidity %}
+                        
+                        {% if temp %}
+                        <div class="badge {% if temp|abs > 0.5 %}strong{% elif temp|abs > 0.3 %}warning{% endif %}">
+                            🌡️ Température: {{ temp|floatformat:3 }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if precp %}
+                        <div class="badge {% if precp|abs > 0.5 %}strong{% elif precp|abs > 0.3 %}warning{% endif %}">
+                            💧 Précipitations: {{ precp|floatformat:3 }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if humid %}
+                        <div class="badge {% if humid|abs > 0.5 %}strong{% elif humid|abs > 0.3 %}warning{% endif %}">
+                            💨 Humidité: {{ humid|floatformat:3 }}
+                        </div>
+                        {% endif %}
+                    {% endwith %}
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Climate Chart -->
+            {% if climate_impact %}
+            <div class="chart-container">
+                <img src="{{ climate_impact }}" alt="Climate Impact Analysis">
+            </div>
+            <div class="interpretation-box">
+                <strong>📊 Panneaux du graphique:</strong>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                    <li><strong>Haut:</strong> Température (orange) et Précipitations (bleu) vs Cas (rouge)</li>
+                    <li><strong>Bas:</strong> Coefficients de corrélation de Pearson (force de la relation linéaire)</li>
+                </ul>
+                <p style="margin-top: 0.5rem;">Valeurs > 0.5: Corrélation forte | 0.3-0.5: Modérée | < 0.3: Faible</p>
+            </div>
+            {% endif %}
+        </div>
+        {% elif has_climate_data %}
+        <div class="chart-section">
+            <div class="section-header">
+                <span class="section-icon">🌡️</span>
+                <h2>Impact du Climat</h2>
+            </div>
+            <div class="data-missing">
+                <p>Les données climatiques ne sont pas disponibles pour cette période.</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 3. CLIMATE COMPARISON CHART (WITH vs WITHOUT) -->
+        {% if climate_comparison %}
+        <div class="chart-section">
+            <div class="section-header">
+                <span class="section-icon">⚖️</span>
+                <h2>Influence Climatique: Avec vs Sans</h2>
+            </div>
+            <div class="chart-container">
+                <img src="{{ climate_comparison }}" alt="Climate Comparison">
+            </div>
+            <div class="interpretation-box">
+                <strong>📌 Ce que vous voyez:</strong>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                    <li><strong>Ligne pointillée bleue:</strong> Tendance attendue SANS facteurs climatiques (ligne de base)</li>
+                    <li><strong>Ligne rouge:</strong> Données RÉELLES observées (avec influence climatique)</li>
+                    <li><strong>Zone orange:</strong> L'écart représente l'impact pur du climat</li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 4. ZONE-LEVEL PREDICTIONS (if province selected) -->
+        {% if province and zone_predictions %}
+        <div class="chart-section">
+            <div class="section-header">
+                <span class="section-icon">📍</span>
+                <h2>Prédictions par Zone de Santé</h2>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #475569;">
+                            <th style="text-align: left; padding: 0.75rem; color: #e2e8f0; font-weight: bold;">Zone de Santé</th>
+                            <th style="text-align: right; padding: 0.75rem; color: #e2e8f0; font-weight: bold;">Cas Prédits</th>
+                            <th style="text-align: center; padding: 0.75rem; color: #e2e8f0; font-weight: bold;">% Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for zone in zone_predictions|slice:":15" %}
+                        <tr style="border-bottom: 1px solid #334155; background: {% cycle '#1e293b' '#0f172a' %};">
+                            <td style="padding: 0.75rem; color: #cbd5e1;">{{ zone.zone_name }}</td>
+                            <td style="text-align: right; padding: 0.75rem; color: #60a5fa; font-weight: bold;">{{ zone.predicted_cases|floatformat:0 }}</td>
+                            <td style="text-align: center; padding: 0.75rem; color: #a1e34d;">
+                                {% if total_predicted_cases > 0 %}
+                                {% widthratio zone.predicted_cases total_predicted_cases 100 %}%
+                                {% else %}
+                                0%
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if zone_predictions|length > 15 %}
+            <p style="margin-top: 1rem; font-size: 12px; color: #94a3b8;">
+                Affichage des 15 zones principales ({{ zone_predictions|length }} au total)
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+        
+        <!-- 5. RECOMMENDATIONS -->
+        {% if recommendations %}
+        <div class="chart-section" style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(20, 184, 166, 0.1) 100%); border-color: #22c55e;">
+            <div class="section-header" style="border-bottom-color: #22c55e;">
+                <span class="section-icon">{{ recommendations.icon }}</span>
+                <h2>{{ recommendations.title }}</h2>
+            </div>
+            
+            {% if recommendations.risk_level %}
+            <div style="background: rgba(20, 184, 166, 0.2); border-left: 4px solid #14b8a6; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+                <div style="font-size: 18px; font-weight: bold; color: #2dd4bf;">{{ recommendations.risk_level }}</div>
+                <div style="color: #99f6e4; margin-top: 0.5rem;">{{ recommendations.urgency }}</div>
+            </div>
+            {% endif %}
+            
+            <ul style="margin: 0; padding-left: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+                {% for action in recommendations.actions %}
+                <li style="background: rgba(30, 41, 59, 0.6); border-left: 4px solid #22c55e; padding: 1rem; border-radius: 6px; color: #86efac; line-height: 1.6;">
+                    {{ action }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        <!-- 6. PROVINCE SELECTOR (if national view) -->
+        {% if not province %}
+        <div class="chart-section">
+            <div class="section-header">
+                <span class="section-icon">🗺️</span>
+                <h2>Analyse par Province</h2>
+            </div>
+            <p style="color: #cbd5e1; margin-bottom: 1.5rem;">Sélectionnez une province pour voir l'analyse détaillée avec données climatiques régionales:</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem;">
+                {% for prov in provinces %}
+                <a href="?disease={{ disease }}&province={{ prov.name }}" 
+                   style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); border: 1px solid #60a5fa; padding: 1rem; border-radius: 8px; text-align: center; color: white; text-decoration: none; font-weight: bold; transition: all 0.3s ease;"
+                   onmouseover="this.style.borderColor='#93c5fd'; this.style.boxShadow='0 0 20px rgba(59, 130, 246, 0.4)';"
+                   onmouseout="this.style.boxShadow='none'; this.style.borderColor='#60a5fa';">
+                    {{ prov.name }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <!-- Back to National View -->
+        <div style="text-align: center; margin-top: 2rem;">
+            <a href="?disease={{ disease }}" 
+               style="display: inline-block; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #475569 0%, #334155 100%); border: 1px solid #64748b; color: white; border-radius: 8px; text-decoration: none; font-weight: bold; transition: all 0.3s ease;"
+               onmouseover="this.style.background='linear-gradient(135deg, #64748b 0%, #475569 100%)'; this.style.borderColor='#94a3b8';"
+               onmouseout="this.style.background='linear-gradient(135deg, #475569 0%, #334155 100%)'; this.style.borderColor='#64748b';">
+                ← Retour à la Vue Nationale
+            </a>
+        </div>
+        {% endif %}
+        
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- All charts are server-side rendered as base64 images -->
+{% endblock %}

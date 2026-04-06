@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Notebook Control Center | Health DRC{% endblock %}
+
+{% block extra_css %}
+<style>
+    .notebook-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .notebook-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+    }
+    
+    .notebook-card h3 {
+        margin: 0 0 10px 0;
+        font-size: 1.3em;
+    }
+    
+    .notebook-card p {
+        margin: 8px 0;
+        opacity: 0.95;
+    }
+    
+    .btn-execute {
+        background: white;
+        color: #667eea;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        margin-top: 12px;
+        transition: all 0.3s;
+    }
+    
+    .btn-execute:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    
+    .stats-box {
+        background: white;
+        border-left: 4px solid #667eea;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .task-item {
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        border-left: 3px solid #667eea;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-weight: bold;
+    }
+    
+    .status-running {
+        background: #ffc107;
+        color: black;
+    }
+    
+    .status-completed {
+        background: #28a745;
+        color: white;
+    }
+    
+    .status-failed {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .execution-log {
+        background: #272822;
+        color: #f8f8f2;
+        padding: 15px;
+        border-radius: 6px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9em;
+        max-height: 400px;
+        overflow-y: auto;
+        margin-top: 15px;
+    }
+    
+    .loading-spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-left: 8px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="mb-4">
+        <h1>🧬 Notebook Control Center</h1>
+        <p class="text-muted">Execute preprocessing, training, and prediction pipelines via Jupyter Notebooks</p>
+    </div>
+    
+    <!-- Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stats-box">
+                <div style="color: #667eea; font-size: 2em; font-weight: bold;">{{ total_executions }}</div>
+                <div class="text-muted">Total Executions</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-box" style="border-left-color: #28a745;">
+                <div style="color: #28a745; font-size: 2em; font-weight: bold;">{{ successful_executions }}</div>
+                <div class="text-muted">Successful</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-box" style="border-left-color: #dc3545;">
+                <div style="color: #dc3545; font-size: 2em; font-weight: bold;">{{ failed_executions }}</div>
+                <div class="text-muted">Failed</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-box" style="border-left-color: #17a2b8;">
+                <a href="{% url 'analytics:jupyter_embed' %}" target="_blank" class="btn btn-sm btn-info">
+                    📓 JupyterLab
+                </a>
+                <div class="text-muted" style="margin-top: 8px;">Direct Access</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notebooks Grid -->
+    <div class="row mb-4">
+        {% for notebook in notebooks %}
+        <div class="col-lg-6">
+            <div class="notebook-card" id="notebook-{{ notebook.id }}">
+                <h3>{{ notebook.title }}</h3>
+                <p>{{ notebook.description|truncatewords:20 }}</p>
+                <small style="opacity: 0.8;">{{ notebook.name }}</small>
+                
+                <button class="btn-execute" onclick="executeNotebook('{{ notebook.id }}')">
+                    ▶️ Execute Notebook
+                </button>
+                
+                <div class="execution-log" id="log-{{ notebook.id }}" style="display: none;">
+                    <div class="text-mute">Waiting for execution...</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Recent Task Executions -->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>📋 Recent Executions</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_tasks %}
+                        {% for task in recent_tasks %}
+                        <div class="task-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ task.task_name }}</strong>
+                                    <span class="status-badge status-{{ task.status }}">{{ task.status|upper }}</span>
+                                </div>
+                                <small class="text-muted">{{ task.updated_at|date:"d/m/Y H:i" }}</small>
+                            </div>
+                            {% if task.result %}
+                            <div style="margin-top: 8px; font-size: 0.9em;">
+                                <code style="color: #666;">{{ task.result|truncatewords:30 }}</code>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <p class="text-muted">No executions yet. Start by running a notebook!</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function executeNotebook(notebookId) {
+    const button = event.target;
+    const logDiv = document.getElementById(`log-${notebookId}`);
+    
+    button.disabled = true;
+    button.innerHTML = '▶️ Executing<span class="loading-spinner"></span>';
+    logDiv.style.display = 'block';
+    logDiv.innerHTML = '<div>⏳ Starting notebook execution...</div>';
+    
+    fetch('/analysis/api/notebooks/execute/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            notebook: notebookId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            logDiv.innerHTML += '<div>✅ Notebook executed successfully!</div>';
+            checkTaskStatus(data.task_id, button);
+        } else {
+            logDiv.innerHTML += '<div style="color: #dc3545;">❌ Error: ' + data.error + '</div>';
+            button.disabled = false;
+            button.innerHTML = '▶️ Execute Notebook';
+        }
+    })
+    .catch(error => {
+        logDiv.innerHTML += '<div style="color: #dc3545;">❌ Network error: ' + error + '</div>';
+        button.disabled = false;
+        button.innerHTML = '▶️ Execute Notebook';
+    });
+}
+
+function checkTaskStatus(taskId, button) {
+    const interval = setInterval(() => {
+        fetch(`/analysis/api/notebooks/status/${taskId}/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'completed') {
+                    button.disabled = false;
+                    button.innerHTML = '✅ Completed';
+                    clearInterval(interval);
+                } else if (data.status === 'failed') {
+                    button.disabled = false;
+                    button.innerHTML = '❌ Failed';
+                    clearInterval(interval);
+                }
+            });
+    }, 2000);
+    
+    // Clear interval after 10 minutes
+    setTimeout(() => clearInterval(interval), 600000);
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

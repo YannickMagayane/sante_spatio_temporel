@@ -81,9 +81,19 @@ class DiseaseInteractiveView(TemplateView):
             zone_dist = DiseaseAnalyzer.get_zone_distribution(province_name, disease_name)
             context['zone_distribution'] = json.dumps(zone_dist)
             
-            # Get zone-level predictions
-            zone_preds = self._get_zone_predictions(province_name, disease_name)
-            context['zone_predictions'] = json.dumps(zone_preds)
+            # Get zone-level predictions (raw dict form)
+            zone_preds_dict = self._get_zone_predictions(province_name, disease_name)
+            
+            # Convert zone predictions to list of dicts for template display
+            zone_preds_list = []
+            if zone_preds_dict.get('labels') and zone_preds_dict.get('predicted'):
+                for zone_name, pred_cases in zip(zone_preds_dict['labels'], zone_preds_dict['predicted']):
+                    zone_preds_list.append({
+                        'zone_name': zone_name,
+                        'predicted_cases': pred_cases
+                    })
+            context['zone_predictions'] = zone_preds_list
+            context['total_predicted_cases'] = sum([z['predicted_cases'] for z in zone_preds_list]) if zone_preds_list else 0
             
             # Get climate impact
             climate_impact = DiseaseAnalyzer.get_climate_impact(province_name, disease_name)
@@ -124,7 +134,7 @@ class DiseaseInteractiveView(TemplateView):
             climate_impact_data = {'correlations': {'temperature': 0, 'precipitation': 0, 'humidity': 0}}
         else:
             zone_dist = json.loads(context.get('zone_distribution', '{}'))
-            zone_preds = json.loads(context.get('zone_predictions', '{}'))
+            zone_preds = self._get_zone_predictions(province_name, disease_name)  # Get raw dict
             pred_data = json.loads(context.get('predictions_data', '{}'))
             climate_impact_data = context.get('climate_impact', {})
         
@@ -141,7 +151,41 @@ class DiseaseInteractiveView(TemplateView):
             yearly_zone_predictions=yearly_zone_preds
         )
         
+        # Store climate data JSON before updating context
+        climate_impact_json = context.get('climate_impact', {})
+        
         context.update(charts)
+        
+        # Map chart keys to template variable names
+        if 'predictions' in charts:
+            context['monthly_forecast'] = 'data:image/png;base64,' + charts['predictions']
+        if 'climate' in charts:
+            context['climate_impact'] = 'data:image/png;base64,' + charts['climate']
+            # Also store the JSON data separately
+            context['climate_data'] = climate_impact_json
+        
+        # Check if we have climate data for display
+        context['has_climate_data'] = province_name and (climate_impact_json.get('correlations', {}).get('temperature', 0) != 0 or 
+                                                         climate_impact_json.get('correlations', {}).get('precipitation', 0) != 0 or
+                                                         climate_impact_json.get('correlations', {}).get('humidity', 0) != 0)
+        
+        # Check if we have data
+        context['has_data'] = timeline_data and timeline_data.get('labels') and timeline_data.get('cases')
+        
+        # Set forecast data if available
+        if province_name:
+            # Try to get forecast from predictions data
+            pred_json = json.loads(context.get('predictions_data', '{}'))
+            if pred_json and pred_json.get('predicted'):
+                forecast = {
+                    'predicted_cases': pred_json.get('predicted', [0])[0],
+                    'reliability': 85  # Default reliability
+                }
+                context['forecast'] = forecast
+                # Get next month
+                labels = pred_json.get('labels', [])
+                if labels:
+                    context['next_month'] = labels[0]
         
         return context
     
@@ -306,47 +350,96 @@ class DiseaseInteractiveView(TemplateView):
         charts = {}
         
         try:
-            # 1️⃣ TIMELINE CHART - Show all years with date range
-            if timeline_data and timeline_data.get('labels'):
-                fig, ax = plt.subplots(figsize=(16, 6), facecolor='#0f172a', edgecolor='none')
+            # 1️⃣ TIMELINE CHART - Historical data + Trend + Predictions
+            if timeline_data and timeline_data.get('labels') and timeline_data.get('cases'):
+                fig, ax = plt.subplots(figsize=(18, 7), facecolor='#0f172a', edgecolor='none')
                 ax.set_facecolor('#1e293b')
                 
                 labels = timeline_data['labels']
                 cases = timeline_data['cases']
+                x = np.arange(len(labels))
                 
                 # Show date range in title
                 date_range = f"{labels[0]} - {labels[-1]}" if labels else "N/A"
                 
-                ax.fill_between(range(len(labels)), cases, alpha=0.3, color='#ef4444', label='Cas Confirmés')
-                ax.plot(range(len(labels)), cases, color='#ef4444', linewidth=3, marker='o', 
-                       markersize=5, markerfacecolor='#ef4444', markeredgecolor='white', markeredgewidth=1.5)
+                # ========== HISTORICAL DATA (Blue) ==========
+                ax.fill_between(x, cases, alpha=0.2, color='#60a5fa', label='Données Historiques')
+                ax.plot(x, cases, color='#60a5fa', linewidth=4, marker='o', 
+                       markersize=8, markerfacecolor='#60a5fa', markeredgecolor='white', markeredgewidth=2)
                 
-                ax.set_xlabel('Temps', fontsize=13, color='#e2e8f0', fontweight='bold')
+                # ========== TREND LINE (Red - Learning Curve) ==========
+                if len(x) >= 3:
+                    # Fit polynomial trend (quadratic or higher)
+                    degree = min(3, len(x) - 1)  # Linear or quadratic
+                    z = np.polyfit(x, cases, degree)
+                    p = np.poly1d(z)
+                    trend_line = p(x)
+                    
+                    ax.plot(x, trend_line, color='#ef4444', linewidth=3.5, linestyle='--', 
+                           label=f'Courbe d\'Apprentissage (Poly deg {degree})', alpha=0.9, zorder=5)
+                    
+                    # Add trend direction annotation
+                    if trend_line[-1] > trend_line[0]:
+                        trend_text = "📈 Tendance CROISSANTE"
+                        trend_color = '#ef4444'
+                    elif trend_line[-1] < trend_line[0]:
+                        trend_text = "📉 Tendance DÉCROISSANTE"
+                        trend_color = '#22c55e'
+                    else:
+                        trend_text = "→ Tendance STABLE"
+                        trend_color = '#eab308'
+                
+                # ========== VALUE LABELS ON DATA POINTS ==========
+                for i, (xi, yi) in enumerate(zip(x, cases)):
+                    if i % max(1, len(x)//8) == 0 or i == 0 or i == len(x)-1:
+                        ax.text(xi, yi, f'{int(yi):,}', 
+                               ha='center', va='bottom', fontsize=9, color='#60a5fa', fontweight='bold')
+                
+                ax.set_xlabel('Années', fontsize=13, color='#e2e8f0', fontweight='bold')
                 ax.set_ylabel('Nombre de Cas', fontsize=13, color='#e2e8f0', fontweight='bold')
-                ax.set_title(f'Évolution Temporelle - {disease_name} | Période: {date_range}', 
+                ax.set_title(f'Évolution Historique + Courbe d\'Apprentissage - {disease_name} ({province_name or "National"})\nPériode: {date_range}', 
                            fontsize=15, color='#e2e8f0', fontweight='bold', pad=20)
                 ax.grid(True, alpha=0.25, color='#64748b', linestyle='--', linewidth=0.8)
-                ax.legend(loc='upper left', framealpha=0.9, facecolor='#1e293b', edgecolor='#64748b', fontsize=11)
                 
                 # Styling
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
                 ax.spines['left'].set_color('#64748b')
                 ax.spines['bottom'].set_color('#64748b')
-                ax.tick_params(colors='#cbd5e1', labelsize=10)
+                ax.tick_params(colors='#cbd5e1', labelsize=11)
                 
-                # Every nth label to avoid crowding
-                step = max(1, len(labels) // 15)
+                # Set x-axis labels
+                step = max(1, len(labels) // 10)
                 ax.set_xticks(range(0, len(labels), step))
-                ax.set_xticklabels([labels[i] if i < len(labels) else '' for i in range(0, len(labels), step)], 
-                                  rotation=45, ha='right', fontsize=10)
+                ax.set_xticklabels([labels[i].split('-')[0] if i < len(labels) else '' 
+                                   for i in range(0, len(labels), step)], 
+                                  rotation=45, ha='right', fontsize=11, fontweight='bold')
                 
-                # Add total cases annotation
+                # Add statistics box
+                min_cases = min(cases) if cases else 0
                 max_cases = max(cases) if cases else 0
-                ax.text(0.98, 0.97, f'Max: {int(max_cases):,} cas', 
-                       transform=ax.transAxes, fontsize=11, color='#60a5fa',
+                avg_cases = np.mean(cases) if cases else 0
+                
+                stats_text = f'📊 STATISTIQUES HISTORIQUES\n'
+                stats_text += f'Période: {labels[0]} → {labels[-1]} ({len(labels)} années)\n'
+                stats_text += f'Min: {int(min_cases):,} | Moy: {int(avg_cases):,} | Max: {int(max_cases):,}'
+                
+                ax.text(0.02, 0.98, stats_text, 
+                       transform=ax.transAxes, fontsize=10, color='#e2e8f0',
+                       verticalalignment='top', horizontalalignment='left',
+                       bbox=dict(boxstyle='round', facecolor='#1e293b', alpha=0.95, edgecolor='#60a5fa', linewidth=2),
+                       fontfamily='monospace')
+                
+                # Add trend annotation
+                ax.text(0.98, 0.98, trend_text, 
+                       transform=ax.transAxes, fontsize=11, color=trend_color,
                        verticalalignment='top', horizontalalignment='right',
-                       bbox=dict(boxstyle='round', facecolor='#1e293b', alpha=0.8, edgecolor='#60a5fa'))
+                       bbox=dict(boxstyle='round', facecolor='#1e293b', alpha=0.95, edgecolor=trend_color, linewidth=2),
+                       fontweight='bold')
+                
+                # Legend
+                ax.legend(loc='upper left', framealpha=0.95, facecolor='#1e293b', 
+                         edgecolor='#64748b', fontsize=12, ncol=2)
                 
                 plt.tight_layout()
                 img_buffer = io.BytesIO()
@@ -356,6 +449,8 @@ class DiseaseInteractiveView(TemplateView):
                 plt.close()
         except Exception as e:
             print(f"Timeline chart error: {e}")
+            import traceback
+            traceback.print_exc()
         
         try:
             # 2️⃣ PROVINCIAL PREDICTIONS CHART - Timeline predictions by province

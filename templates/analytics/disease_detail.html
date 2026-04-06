@@ -15,6 +15,137 @@
         height: 350px;
     }
     canvas { max-width: 100%; display: block !important; }
+
+    /* ============= GRAPHIQUE AMÉLIORATIONS ============= */
+    .matplotlib-chart {
+        background: linear-gradient(135deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.1) 100%);
+        border-radius: 16px;
+        padding: 1.5rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 400px;
+        box-shadow: 
+            0 20px 60px rgba(0, 0, 0, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .matplotlib-chart::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
+    }
+
+    .matplotlib-chart img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 12px;
+        filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.5)) contrast(1.05);
+        transition: filter 0.3s ease;
+    }
+
+    .matplotlib-chart:hover img {
+        filter: drop-shadow(0 15px 40px rgba(59, 130, 246, 0.3)) contrast(1.1);
+    }
+
+    /* Badge de confiance */
+    .confidence-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 0.5rem 0;
+    }
+
+    .confidence-badge.low {
+        background: rgba(239, 68, 68, 0.2);
+        border: 1px solid rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+    }
+
+    .confidence-badge.medium {
+        background: rgba(249, 115, 22, 0.2);
+        border: 1px solid rgba(249, 115, 22, 0.5);
+        color: #fed7aa;
+    }
+
+    .confidence-badge.high {
+        background: rgba(34, 197, 94, 0.2);
+        border: 1px solid rgba(34, 197, 94, 0.5);
+        color: #bbf7d0;
+    }
+
+    /* Barre de progression pour les métriques */
+    .metric-bar {
+        width: 100%;
+        height: 6px;
+        background: rgba(71, 85, 105, 0.3);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 0.5rem;
+        position: relative;
+    }
+
+    .metric-bar-fill {
+        height: 100%;
+        border-radius: 10px;
+        background: linear-gradient(90deg, #3b82f6, #0ea5e9);
+        transition: width 0.5s ease;
+        position: relative;
+    }
+
+    .metric-bar-fill.low {
+        background: linear-gradient(90deg, #ef4444, #f87171);
+    }
+
+    .metric-bar-fill.medium {
+        background: linear-gradient(90deg, #f97316, #fb923c);
+    }
+
+    .metric-bar-fill.high {
+        background: linear-gradient(90deg, #22c55e, #4ade80);
+    }
+
+    .metric-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+
+    /* Contexte Persistence */
+    .persistence-note {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        border-left: 4px solid #94a3b8;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+        font-size: 0.85rem;
+        color: #cbd5e1;
+        line-height: 1.6;
+    }
+
+    .persistence-note strong {
+        color: #e2e8f0;
+    }
+
+    .persistence-note .icon {
+        margin-right: 0.5rem;
+    }
 </style>
 {% endblock %}
 
@@ -83,9 +214,15 @@
                 <span class="text-3xl">📈</span>Évolution Temporelle - {{ disease }}
             </h2>
             <p class="text-slate-400 text-sm mb-6">Tendance mensuelle des cas depuis 2010</p>
+            {% if timeline_graph %}
+            <div class="matplotlib-chart">
+                <img src="{{ timeline_graph }}" alt="Timeline">
+            </div>
+            {% else %}
             <div class="chart-wrapper">
                 <canvas id="timelineChart"></canvas>
             </div>
+            {% endif %}
         </div>
     </div>
 
@@ -96,9 +233,15 @@
                 <span class="text-3xl">🗺️</span>Charge Morbide par Province
             </h2>
             <p class="text-slate-400 text-sm mb-6">Répartition du {{ disease }} par province nationale</p>
+            {% if province_comparison_graph %}
+            <div class="matplotlib-chart">
+                <img src="{{ province_comparison_graph }}" alt="Province Comparison">
+            </div>
+            {% else %}
             <div class="chart-wrapper">
                 <canvas id="provinceChart"></canvas>
             </div>
+            {% endif %}
         </div>
     </div>
 
@@ -110,8 +253,153 @@
             </h2>
             <p class="text-slate-400 text-sm mb-6">Prévisions des cas confirmés basées sur les modèles d'apprentissage automatique</p>
             <div class="chart-wrapper">
+                <canvas id="predictionChart"></canvas>            </div>
+        </div>
+    </div>
+
+    <!-- MATPLOTLIB GRAPHS SECTION -->
+    <div class="mb-10">
+        <h2 class="text-3xl font-black text-white mb-6 flex items-center gap-3">
+            <span class="text-4xl">🤖</span>Analyse Avancée - Graphiques Matplotlib
+        </h2>
+        
+        <!-- Learning Curve -->
+        {% if learning_curve %}
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 backdrop-blur shadow-xl mb-8">
+            <h3 class="text-2xl font-black text-white mb-4 flex items-center gap-3">
+                <span class="text-3xl">📚</span>Courbe d'Apprentissage du Modèle
+            </h3>
+            <p class="text-slate-400 text-sm mb-6">Évolution de la précision du modèle (R²) au fil du temps</p>
+            <div class="matplotlib-chart">
+                <img src="{{ learning_curve }}" alt="Courbe d'apprentissage">
+            </div>
+            <div class="mt-4 space-y-4">
+                <div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                    <p class="text-sm text-blue-300 mb-2">
+                        <strong>📊 Axe X (Horizontal):</strong> Date de génération des prédictions par le modèle
+                    </p>
+                    <p class="text-sm text-blue-300 mb-2">
+                        <strong>📈 Axe Y (Vertical):</strong> Précision du modèle en pourcentage (R²) - Plus haut = Plus précis (jusquà 100%)
+                    </p>
+                </div>
+                <div class="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                    <p class="text-sm text-green-300 mb-2">
+                        <strong>� Pourquoi début mai 2026?</strong> La date indiquée correspond au moment où les prédictions ont été générées par le modèle d'apprentissage automatique. 
+                        C'est la date de création des prédictions qui couvrent les mois futurs.
+                    </p>
+                    <p class="text-sm text-green-300">
+                        <strong>✅ Interprétation:</strong> Une courbe ascendante = le modèle s'améliore. Une courbe descendante = le modèle se dégrade. 
+                        La ligne pointillée orange montre la précision moyenne du modèle.
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Distribution Graph -->
+        {% if distribution_graph %}
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 backdrop-blur shadow-xl mb-8">
+            <h3 class="text-2xl font-black text-white mb-4 flex items-center gap-3">
+                <span class="text-3xl">📊</span>Distribution des Cas par Zone
+            </h3>
+            <p class="text-slate-400 text-sm mb-6">Le poids relatif du {{ disease }} dans les différentes zones de santé</p>
+            <div class="matplotlib-chart">
+                <img src="{{ distribution_graph }}" alt="Distribution des cas">
+            </div>
+            <div class="mt-4 bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
+                <p class="text-sm text-purple-300">
+                    💡 <strong>Interprétation:</strong> Les zones avec les barres les plus hautes concentrent la majorité des cas. 
+                    Cela aide à identifier les "hotspots" où les interventions doivent être renforcées.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Seasonality Graph -->
+        {% if seasonality_graph %}
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 backdrop-blur shadow-xl mb-8">
+            <h3 class="text-2xl font-black text-white mb-4 flex items-center gap-3">
+                <span class="text-3xl">🌡️</span>Profil Saisonnier
+            </h3>
+            <p class="text-slate-400 text-sm mb-6">Tendance mensuelle moyenne du {{ disease }} sur toute la période</p>
+            <div class="matplotlib-chart">
+                <img src="{{ seasonality_graph }}" alt="Saisonnalité">
+            </div>
+            <div class="mt-4 bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                <p class="text-sm text-green-300">
+                    💡 <strong>Interprétation:</strong> Les pics mont rent quand le {{ disease }} est le plus actif durant l'année. 
+                    Utile pour planifier les campagnes de sensibilisation et les distributions de préventifs.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Zone Performance Graph -->
+        {% if zone_performance %}
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 backdrop-blur shadow-xl mb-8">
+            <h3 class="text-2xl font-black text-white mb-4 flex items-center gap-3">
+                <span class="text-3xl">🏆</span>Performance des Zones de Santé
+            </h3>
+            <p class="text-slate-400 text-sm mb-6">Comparaison du total accumulé vs charge mensuelle annualisée</p>
+            <div class="matplotlib-chart">
+                <img src="{{ zone_performance }}" alt="Performance des zones">
+            </div>
+            <div class="mt-4 space-y-3">
+                <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                    <p class="text-sm text-red-300 mb-2">
+                        <strong>🔴 Barre Rouge (Total accumulé):</strong> Total de tous les cas enregistrés dans la zone depuis le début des données (au moins 84 mois)
+                    </p>
+                </div>
+                <div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                    <p class="text-sm text-blue-300 mb-2">
+                        <strong>🔵 Barre Bleue (Annualisé):</strong> Moyenne mensuelle × 12 = Ce que représenterait le volume annuel si la tendance continuait
+                    </p>
+                </div>
+                <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                    <p class="text-sm text-yellow-300 mb-2">
+                        💡 <strong>Pourquoi deux barres?</strong> Certaines zones ont peu d'historique (ex: 6 mois) tandis que d'autres en ont 84 mois. 
+                        La barre Annualisée normalise cette différence pour une comparaison équitable.
+                    </p>
+                    <p class="text-sm text-yellow-300 mb-2">
+                        ✅ <strong>Cas d'usage:</strong> Une zone avec total=500 (rouge) mais annualisé=1200 (bleu) est très active (montée forte). Une zone avec total=500 mais annualisé=100 est stable ou en baisse.
+                    </p>
+                    <p class="text-sm text-yellow-300">
+                        🎯 <strong>Priorité:</strong> Les zones où la barre BLEUE > BARRE ROUGE méritent une intervention urgente car la charge augmente rapidement.
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Prediction with History Graph -->
+    <div class="mb-10">
+        <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 backdrop-blur shadow-xl">
+            <h2 class="text-2xl font-black text-white mb-2 flex items-center gap-3">
+                <span class="text-3xl">📊</span>Prédictions & Tendances
+            </h2>
+            <p class="text-slate-400 text-sm mb-6">Prévisions des cas confirmés basées sur les modèles d'apprentissage automatique</p>
+            {% if prediction_with_history_graph %}
+            <div class="matplotlib-chart">
+                <img src="{{ prediction_with_history_graph }}" alt="Prédictions">
+            </div>
+            <div class="mt-4 space-y-3">
+                <div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                    <p class="text-sm text-blue-300 mb-2">
+                        <strong>🔵 Ligne Cyan (Données historiques):</strong> Tous les cas confirmés du passé
+                    </p>
+                </div>
+                <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                    <p class="text-sm text-red-300">
+                        <strong>🔴 Ligne Pointillée Rouge (Prédictions):</strong> Cas prévus pour les périodes futures
+                    </p>
+                </div>
+            </div>
+            {% else %}
+            <div class="chart-wrapper">
                 <canvas id="predictionChart"></canvas>
             </div>
+            {% endif %}
         </div>
     </div>
 
@@ -338,34 +626,34 @@ document.addEventListener('DOMContentLoaded', function() {
                     {
                         label: 'Cas Prédits',
                         data: predictionData.predicted,
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
                         tension: 0.4,
                         fill: true,
                         borderWidth: 3,
-                        pointRadius: 4,
-                        pointBackgroundColor: '#3b82f6',
+                        pointRadius: 5,
+                        pointBackgroundColor: '#ef4444',
                         pointBorderColor: '#fff',
                         pointBorderWidth: 2,
-                        pointHoverRadius: 7
+                        pointHoverRadius: 8
                     },
                     {
-                        label: 'Intervalle de confiance supérieur',
+                        label: 'Intervalle sup.',
                         data: predictionData.confidence_upper,
-                        borderColor: 'rgba(59, 130, 246, 0.3)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.05)',
-                        borderWidth: 1,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                        borderWidth: 2,
                         borderDash: [5, 5],
                         fill: '-1',
                         pointRadius: 0,
                         tension: 0.4
                     },
                     {
-                        label: 'Intervalle de confiance inférieur',
+                        label: 'Intervalle inf.',
                         data: predictionData.confidence_lower,
-                        borderColor: 'rgba(59, 130, 246, 0.3)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.05)',
-                        borderWidth: 1,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                        borderWidth: 2,
                         borderDash: [5, 5],
                         pointRadius: 0,
                         tension: 0.4
