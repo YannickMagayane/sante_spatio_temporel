@@ -25,13 +25,15 @@
 
 ### 🎯 Key Features
 
-✅ **Adaptive Multi-Tier Architecture** — Automatically selects the best model based on data availability  
-✅ **Climate Integration** — Temperature, precipitation, humidity factored into all predictions  
-✅ **100% Geographic Coverage** — 519 health zones, 26 provinces, full DRC territory  
-✅ **Real-time Dashboard** — Interactive heatmaps, charts, and analytics  
-✅ **Trend-based Propagation** — Detects actual epidemic spread using 6-month baselines  
-✅ **Docker-Containerized** — Complete system runs in Docker Compose  
-✅ **NeuralCore Intelligence** — Explains AI decisions in plain language  
+✅ **Adaptive Multi-Tier Architecture** — Automatically selects the best model based on data availability
+✅ **Climate Integration** — Temperature, precipitation, humidity factored into all predictions
+✅ **100% Geographic Coverage** — 519 health zones, 26 provinces, full DRC territory
+✅ **Real-time Dashboard** — Interactive heatmaps, charts, and analytics
+✅ **Trend-based Propagation** — Detects actual epidemic spread using 6-month baselines
+✅ **Docker-Containerized** — Complete system runs in Docker Compose
+✅ **NeuralCore Intelligence** — Explains AI decisions in plain language
+✅ **Task Management** — Stop long-running training/ingestion jobs with one click
+✅ **Training Reset** — Clean slate functionality to restart training from scratch  
 
 ---
 
@@ -300,6 +302,22 @@ Dashboard Graphs:
    └─ Color intensity by cases + climate boost
 ```
 
+### Task Management
+
+Access the task management interface at `http://localhost:8000/tasks/`
+
+- **View running/completed tasks** with real-time progress
+- **Stop long-running jobs** (training/ingestion) with one click
+- **Auto-refresh** every 3 seconds for running tasks
+- **View logs** (output and errors) for any task
+
+```
+Task Types:
+├─ 🧠 Entraînement des Modèles (training)
+├─ 📥 Ingestion des Données HDX (data sync)
+└─ 📦 Ingestion Données Climatiques (climate data)
+```
+
 ### Filters
 
 ```bash
@@ -426,6 +444,19 @@ docker-compose exec app python scripts/train_models.py --provinces Katanga
 docker-compose exec app python scripts/train_models.py --epochs 80
 ```
 
+### Training Reset (Clean Slate)
+
+⚠️ **Warning**: This deletes all trained models, predictions, and training history.
+
+```bash
+# Reset everything (models, predictions, task history)
+docker-compose exec app python scripts/reset_training.py
+
+# After reset, the dashboard will show 0 statistics
+# Launch a new training to rebuild predictions
+docker-compose exec app python scripts/train_models.py
+```
+
 ### Data Management
 
 ```bash
@@ -503,13 +534,15 @@ curl http://localhost:8000/api/alerts/
 
 ### 🎯 Caractéristiques Principales
 
-✅ **Architecture Multi-Tier Adaptative** — Sélectionne automatiquement le meilleur modèle selon les données disponibles  
-✅ **Intégration Climatique** — Température, précipitations, humidité intégrées à toutes les prédictions  
-✅ **Couverture Géographique 100%** — 519 zones de santé, 26 provinces, tout le territoire  
-✅ **Dashboard Temps Réel** — Heatmaps interactives, graphiques, analytics  
-✅ **Taux de Propagation Intelligent** — Détecte la vraie propagation épidémique via baselines 6 mois  
-✅ **Containerisé Docker** — Système complet fonctionne dans Docker Compose  
-✅ **Intelligence NeuralCore** — Explique les décisions IA en langage simple  
+✅ **Architecture Multi-Tier Adaptative** — Sélectionne automatiquement le meilleur modèle selon les données disponibles
+✅ **Intégration Climatique** — Température, précipitations, humidité intégrées à toutes les prédictions
+✅ **Couverture Géographique 100%** — 519 zones de santé, 26 provinces, tout le territoire
+✅ **Dashboard Temps Réel** — Heatmaps interactives, graphiques, analytics
+✅ **Taux de Propagation Intelligent** — Détecte la vraie propagation épidémique via baselines 6 mois
+✅ **Containerisé Docker** — Système complet fonctionne dans Docker Compose
+✅ **Intelligence NeuralCore** — Explique les décisions IA en langage simple
+✅ **Gestion des Tâches** — Arrêter les entraînements/ingestions longs en un clic
+✅ **Reset d'Entraînement** — Fonctionnalité de remise à zéro complète pour recommencer  
 
 ---
 
@@ -778,6 +811,22 @@ Graphiques Dashboard:
    └─ Intensité couleur par cases + boost climat
 ```
 
+### Gestion des Tâches
+
+Accédez à l'interface de gestion des tâches sur `http://localhost:8000/tasks/`
+
+- **Visualiser les tâches** en cours/complétées avec progression en temps réel
+- **Arrêter les tâches longues** (entraînement/ingestion) d'un simple clic
+- **Rafraîchissement automatique** toutes les 3 secondes pour les tâches actives
+- **Consulter les logs** (sortie et erreurs) de n'importe quelle tâche
+
+```
+Types de Tâches:
+├─ 🧠 Entraînement des Modèles (training)
+├─ 📥 Ingestion des Données HDX (sync données)
+└─ 📦 Ingestion Données Climatiques (climat)
+```
+
 ### Filtres
 
 ```bash
@@ -902,6 +951,19 @@ docker-compose exec app python scripts/train_models.py --provinces Katanga
 
 # Entraîner avec epochs custom
 docker-compose exec app python scripts/train_models.py --epochs 80
+```
+
+### Reset d'Entraînement (Remise à Zéro)
+
+⚠️ **Attention**: Supprime tous les modèles entraînés, prédictions et historique.
+
+```bash
+# Réinitialiser complètement (modèles, prédictions, historique)
+docker-compose exec app python scripts/reset_training.py
+
+# Après le reset, le dashboard affiche 0 statistiques
+# Lancez un nouvel entraînement pour reconstruire les prédictions
+docker-compose exec app python scripts/train_models.py
 ```
 
 ### Gestion Données
