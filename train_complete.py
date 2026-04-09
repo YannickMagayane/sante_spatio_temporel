@@ -46,6 +46,7 @@ django.setup()
 from django.db import transaction
 from analytics.models import HealthZone, ClinicalData, Prediction, Province, ClimateData
 from django.db.models import Count, Avg, Max, Min
+from analytics.disease_analyzer import DiseaseAnalyzer
 
 # ML Libraries
 import tensorflow as tf
@@ -645,6 +646,19 @@ class Predictor:
                 )
 
                 if prediction_value is not None:
+                    # Calculer le taux de propagation basé sur les tendances historiques
+                    # Récupérer l'objet zone complet
+                    try:
+                        zone_obj = HealthZone.objects.get(id=zone_id)
+                        propagation_rate = DiseaseAnalyzer.calculate_propagation_rate(
+                            health_zone=zone_obj,
+                            disease_name=disease,
+                            months_window=6  # utiliser les 6 derniers mois pour tendance récente
+                        )
+                    except Exception as e:
+                        logger.warning(f"  ⚠️ Erreur calcul propagation {zone_name}/{disease}: {e}")
+                        propagation_rate = 0.0
+
                     # Save prediction in database
                     try:
                         Prediction.objects.update_or_create(
@@ -653,14 +667,14 @@ class Predictor:
                             prediction_date=next_month,
                             defaults={
                                 'predicted_cases': round(prediction_value, 1),
+                                'propagation_rate': propagation_rate,
                                 'influence_factors': {
                                     'reliability': round(confidence, 1),
                                     'model_used': model_info['tier_name'] if model_info else 'Persistence',
                                     'tier': tier,
                                     'data_months': len(hist_df),
                                     'last_updated': datetime.now().isoformat()
-                                },
-                                'propagation_rate': 0.0  # TODO: Calculate based on trends
+                                }
                             }
                         )
                         predictions_count += 1

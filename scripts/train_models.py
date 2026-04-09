@@ -1443,6 +1443,7 @@ def train_and_predict(prediction_date=None, train_mode=True, verbose=True):
                             health_zone=zone, disease_name=d_name,
                             prediction_date=target_date,
                             predicted_cases=round(pred_val, 1),
+                            propagation_rate=round(growth, 1),
                             influence_factors=influence_data
                         ))
         
@@ -1696,6 +1697,7 @@ def train_and_predict(prediction_date=None, train_mode=True, verbose=True):
                                     health_zone=zone, disease_name=d_name,
                                     prediction_date=target_date,
                                     predicted_cases=round(pred_val, 1),
+                                    propagation_rate=round(growth, 1),
                                     influence_factors=influence_data
                                 ))
 
@@ -1821,6 +1823,7 @@ def train_and_predict(prediction_date=None, train_mode=True, verbose=True):
                                     health_zone=zone, disease_name=d_name,
                                     prediction_date=target_date,
                                     predicted_cases=round(pred_val, 1),
+                                    propagation_rate=round(growth, 1),
                                     influence_factors=influence_data
                                 ))
 
@@ -1944,6 +1947,7 @@ def train_and_predict(prediction_date=None, train_mode=True, verbose=True):
                                     health_zone=zone, disease_name=d_name,
                                     prediction_date=target_date,
                                     predicted_cases=round(pred_val, 1),
+                                    propagation_rate=round(growth, 1),
                                     influence_factors=influence_data
                                 ))
 
@@ -2022,6 +2026,7 @@ def train_and_predict(prediction_date=None, train_mode=True, verbose=True):
                         health_zone=zone, disease_name=d_name,
                         prediction_date=target_date,
                         predicted_cases=round(pred_val, 1),
+                        propagation_rate=round(growth, 1),
                         influence_factors=influence_data
                     ))
 

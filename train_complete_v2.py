@@ -44,6 +44,7 @@ from analytics.models import (
     HealthZone, ClinicalData, Prediction, Province, Territory, ClimateData
 )
 from django.db.models import Count, Avg, Max, Min, Q
+from analytics.disease_analyzer import DiseaseAnalyzer
 
 import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
@@ -225,8 +226,8 @@ def add_climate_features(epi_df, climate_loader):
 
         # Get date range for this province
         prov_data = epi_df[epi_df['province'] == province]
-        start_date = prov_data['month'].min()
-        end_date = prov_data['month'].max()
+        start_date = pd.to_datetime(prov_data['month'].min())
+        end_date = pd.to_datetime(prov_data['month'].max())
 
         # Load climate data
         climate_df = climate_loader.get_province_climate_timeseries(
@@ -567,6 +568,13 @@ def generate_predictions(metadata):
 
                 prediction = max(0, prediction)
 
+                # Calculer le taux de propagation basé sur les tendances historiques
+                propagation_rate = DiseaseAnalyzer.calculate_propagation_rate(
+                    health_zone=zone,
+                    disease_name=disease,
+                    months_window=6  # utiliser les 6 derniers mois pour tendance récente
+                )
+
                 # Save prediction
                 pred_date = hist_df['month'].max() + relativedelta(months=1)
 
@@ -576,7 +584,7 @@ def generate_predictions(metadata):
                     prediction_date=pred_date,
                     defaults={
                         'predicted_cases': round(prediction, 1),
-                        'propagation_rate': 0,  # Calculé plus tard
+                        'propagation_rate': propagation_rate,
                         'influence_factors': {
                             'reliability': max(50, min(99, int(metadata['diseases'][disease]['r2'] * 100))),
                             'model_used': f"Tier {model_info['tier']}",

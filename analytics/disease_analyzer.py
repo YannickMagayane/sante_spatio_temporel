@@ -492,3 +492,72 @@ class DiseaseAnalyzer:
             'min_recurrence': min_recurrence,
             'zones_detail': sorted(zones_detail, key=lambda x: x['percentage'], reverse=True)[:20]  # Top 20
         }
+
+    @staticmethod
+    def calculate_propagation_rate(health_zone, disease_name, months_window=6):
+        """
+        Calcule le taux de propagation (croissance/déclin) d'une maladie sur une zone.
+
+        Méthode: régression linéaire sur les cas mensuels (échelle log si cas > 0),
+        puis conversion en % de variation par semaine.
+
+        :param health_zone: Objet HealthZone
+        :param disease_name: Nom de la maladie
+        :param months_window: Nombre de mois à considérer (défaut: 6 derniers mois)
+        :returns: float - taux de propagation en %/semaine (positif = croissance, négatif = déclin)
+        """
+        from django.db.models import Sum
+        import numpy as np
+        from datetime import datetime
+
+        # Récupérer les N derniers mois de données cliniques
+        historical = ClinicalData.objects.filter(
+            health_zone=health_zone,
+            disease_name=disease_name
+        ).order_by('-month')[:months_window]
+
+        if historical.count() < 3:
+            return 0.0  # Pas assez de données
+
+        # Ordonner du plus ancien au plus récent
+        historical = list(reversed(historical))
+        months = [h.month for h in historical]
+        cases = [float(h.cases_count) for h in historical]
+
+        if len(cases) < 3:
+            return 0.0
+
+        # Éviter les cas tous nuls
+        if all(c == 0 for c in cases):
+            return 0.0
+
+        # Calcul de la pente par régression linéaire simple
+        # Utiliser l'échelle logarithmique si croissance exponentielle suspectée
+        # (mais éviter log(0) - on ajoute un petit epsilon)
+        n = len(cases)
+        x = np.arange(n)  # 0, 1, 2, ...
+
+        # Version robuste: utiliser la variation relative moyenne entre périodes consécutives
+        # C'est plus interprétable comme un taux de croissance
+        weekly_rates = []
+        for i in range(1, n):
+            prev = cases[i-1]
+            curr = cases[i]
+            if prev > 0 and curr > 0:
+                monthly_change = (curr - prev) / prev  # variation relative mensuelle
+                weekly_rate = monthly_change / 4.33  # conversion en ~semaines (1 mois = 4.33 semaines)
+                weekly_rates.append(weekly_rate * 100)  # en %
+            elif prev == 0 and curr > 0:
+                # Passage de 0 à non-zero: croissance infinie, on borne
+                weekly_rates.append(50.0)  # +50%/semaine (borne raisonnable)
+            elif prev > 0 and curr == 0:
+                # Passage à 0: déclin
+                weekly_rates.append(-50.0)
+
+        if weekly_rates:
+            # Prendre la médiane pour robustesse aux outliers
+            median_rate = float(np.median(weekly_rates))
+            # Borner à ±100%/semaine (extrême)
+            return round(np.clip(median_rate, -100.0, 100.0), 2)
+        else:
+            return 0.0

@@ -1327,25 +1327,38 @@ def training_performance_api(request):
 
         # Préparer les données pour le graphique
         models_data = []
-        # Exclure le Persistence (tier 4) pour éviter le fallback
-        model_order = ['ConvLSTM2D', 'CNN-LSTM', 'Bi-LSTM']  # Ne pas inclure 'Persistence'
+        # Mapping des tiers vers les noms d'affichage
+        tier_names = {
+            1: 'ConvLSTM2D',
+            2: 'CNN-LSTM',
+            3: 'Bi-LSTM'
+        }
 
-        for model_name in model_order:
-            if model_name in model_metrics and model_metrics[model_name]['r2']:
-                metrics = model_metrics[model_name]
+        # Filtrer model_metrics pour ne garder que les modèles Tier 1-3 (exclure Persistence tier 4)
+        for model_name, metrics in model_metrics.items():
+            if not metrics['tier']:
+                continue
+            # Prendre le tier moyen (ou premier) pour ce modèle
+            avg_tier = int(sum(metrics['tier']) / len(metrics['tier']))
+            if avg_tier in tier_names:
                 avg_r2 = round(sum(metrics['r2']) / len(metrics['r2']) * 100, 1)  # en %
                 avg_reliability = round(sum(metrics['reliability']) / len(metrics['reliability']), 1)
                 avg_mae = round(sum(metrics['mae']) / len(metrics['mae']), 1)
 
                 models_data.append({
-                    'name': model_name,
+                    'name': tier_names[avg_tier],
                     'r2': avg_r2,
                     'reliability': avg_reliability,
                     'mae': avg_mae,
-                    'tier': int(metrics['tier'][0]) if metrics['tier'] else 4,
+                    'tier': avg_tier,
                     'disease_count': len(metrics['diseases']),
                     'zone_count': len(metrics['zones'])
                 })
+                break  # Un modèle ne représente qu'un seul tier
+
+        # Trier par tier (ConvLSTM2D puis CNN-LSTM puis Bi-LSTM)
+        tier_order = {1: 0, 2: 1, 3: 2}
+        models_data.sort(key=lambda x: tier_order.get(x['tier'], 99))
 
         # Récupérer les statistiques globales
         total_predictions = preds.count()
